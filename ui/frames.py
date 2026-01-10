@@ -164,8 +164,8 @@ class InventoryFrame(ttk.Frame):
 
         # Construct an InventoryData object
         # If no params are given, a blank object will be generated, which will return all possible datapoints
-        stock_data = ds.StockData(name=self._search_params["name"]) if self._search_params["name"] else ds.StockData()
-        location_data = ds.LocationData(name=self._search_params["location"]) if self._search_params["location"] else ds.LocationData()
+        stock_data = ds.StockData(name=self._search_params["name"].get()) if self._search_params["name"] else ds.StockData()
+        location_data = ds.LocationData(name=self._search_params["location"].get()) if self._search_params["location"] else ds.LocationData()
         # TODO: Check that the data is valid
 
         query = ds.InventoryData(stock_type=stock_data, location=location_data)

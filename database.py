@@ -69,6 +69,7 @@ class Database:
             case ds.LocationData():
                 return self.fetch_location_data(data)
             case ds.InventoryData():
+                print("diverted")
                 return self.fetch_inventory_data(data)
             
     def fetch_stock_data(self, data: ds.StockData):
@@ -83,9 +84,9 @@ class Database:
         """
         query = """
             SELECT
-                current_inventory.stock_id AS id
-                current_inventory.current_quantity AS current_quantity
-                location_data.name AS location_name
+                current_inventory.stock_id AS id,
+                current_inventory.current_quantity AS current_quantity,
+                location_data.name AS location_name,
                 stock_data.name AS stock_name
             FROM
                 current_inventory
@@ -96,11 +97,11 @@ class Database:
         """
         params = []
 
-        if data._location._name:
+        if data._location._name is not None :
             query += " AND location_data.name = ?"
             params.append(data._location._name)
 
-        if data._stock_type._name:
+        if data._stock_type._name is not None:
             query += " AND stock_data.name = ?"
             params.append(data._stock_type._name)
 
