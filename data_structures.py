@@ -34,7 +34,29 @@ class InventoryData(SqlData):
     """
     Passes data on current inventory between the ui and the database
     """
-    def __init__(self, id_str: str = None, location: LocationData = LocationData(), stock_type: StockData = StockData()):
+    def __init__(self, id_str: str = None, location: LocationData = LocationData(), stock_type: StockData = StockData(), quantity: str = None):
         self._id_str = id_str
         self._location = location
         self._stock_type = stock_type
+        self._quantity = quantity
+
+class QuantityData(SqlData):
+    """
+    Passes data on current stock quantity query between the ui and the database
+    """
+    def __init__(self, stock_name: str = None, location_name: str = None):
+        self._stock_name = stock_name
+        self._location_name = location_name
+
+class LogData(SqlData):
+    """
+    Passes data on log query between the ui and the database
+    """
+    def __init__(self, id_str: str = None, stock_name: str = None, location_name: str = None, activity_type: str = None, update_details: str = None, quantity_change: str = None, date_occured:str = datetime.now().strftime("%Y-%m-%d %H:%M%S")):
+        self._id_str = id_str
+        self._stock_name = stock_name
+        self._location_name = location_name
+        self._activity_type = activity_type
+        self._update_details = update_details
+        self._quantity_change = quantity_change
+        self._date_occured = date_occured

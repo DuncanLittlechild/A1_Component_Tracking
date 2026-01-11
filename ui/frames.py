@@ -3,6 +3,7 @@ from tkinter import ttk
 from tkinter import messagebox
 import data_structures as ds
 import validation as valid
+from abc import ABC, abstractmethod
 
 ########################
 ## class ChooseFrame  ##
@@ -27,8 +28,86 @@ class ChooseFrame(ttk.Frame):
         # Exit button
         self.exitButton = ttk.Button(self, text="exit", command=self.controller.destroy).pack()
 
+################
+## DataFrames ##
+################
+# Frames to display in the main app window
+# These allow the databases to be searched, as well as allowing create, update and delete operations through opening toplevel windows
 
-class InventoryFrame(ttk.Frame):
+class DataFrame(ttk.Frame, ABC):
+    """
+    Base frame to define the set of methods all dataframe must instantiate
+    """
+    def on_double_click(self):
+        """
+        Sets behvaiour for when a table entry is double clicked
+        """
+        self.edit_data
+    
+    def clear_search(self):
+        """
+        Clears the search params and then gets all data from the database
+        """
+        for p in self._search_params:
+            p.set("")
+
+        self.load_data()
+
+    def get_selected_item(self):
+        """
+        Gets the id of the currently selected item on the treeview
+        """
+        selected = self._table.selection()
+        if not selected:
+            messagebox.showwarning("No Item Selected", "Choose an item to edit first")
+            return None
+        item = self._table.item(selected[0])
+        return item["values"][0]
+
+    @abstractmethod
+    def create_widgets(self):
+        """
+        Create the widgets for the frame
+        """
+        pass
+
+    @abstractmethod
+    def add_item(self):
+        """
+        Displays the toplevel window to add items to the database
+        """
+        pass
+
+    @abstractmethod
+    def edit_item(self):
+        """
+        Displays the toplevel window to edit items in the databsee
+        """
+        pass
+
+    @abstractmethod
+    def delete_item(self):
+        """
+        Confirms deletion then deletes item from the database
+        """
+        pass
+
+    @abstractmethod
+    def load_data(self):
+        """
+        Retreive data from the database, and use it to reconstruct the treeview
+        """
+        pass
+
+    @abstractmethod
+    def valid_params(self):
+        """
+        Ensure that all parameters are valid
+        """
+        pass
+
+
+class InventoryFrame(DataFrame):
     """
     Frame to display the main inventory
     All operations on this page allow the user to perform CRUD operations on stock instances
@@ -48,7 +127,6 @@ class InventoryFrame(ttk.Frame):
         self.create_widgets()
 
         self.load_data()
-
 
     def create_widgets(self):
         """
@@ -76,7 +154,7 @@ class InventoryFrame(ttk.Frame):
         # Buttons to submit search query
         search_button = ttk.Button(search_bars, text="Search", command=self.load_data)
         search_button.grid(row=3, column=0, padx=5, pady=5)
-        clear_button = ttk.Button(search_bars, text="Clear", command=self.clear_search)
+        clear_button = ttk.Button(search_bars, text="Clear", command=super().clear_search)
         clear_button.grid(row=3, column=1, sticky="w", padx=5, pady=5)
 
         ## Create table ##
@@ -122,7 +200,7 @@ class InventoryFrame(ttk.Frame):
         table_display.grid_columnconfigure(0, weight=1)
 
         # Create custom behaviour for when a table row is clicked
-        self._table.bind("<Double-1>", self.on_double_click)
+        self._table.bind("<Double-1>", super().on_double_click)
 
 
         ## Create buttons ##
@@ -130,27 +208,53 @@ class InventoryFrame(ttk.Frame):
         button_display.pack(fill="x", padx=10, pady=5)
 
         # Button to add stock
-        add_button = ttk.Button(button_display, text="Add Stock", command=self.add_stock)
+        add_button = ttk.Button(button_display, text="Add Stock", command=self.add_data)
         add_button.pack(side="left", padx=5)
         # Button to edit stock
-        edit_button = ttk.Button(button_display, text="Edit Stock", command=self.edit_stock)
+        edit_button = ttk.Button(button_display, text="Edit Stock", command=self.edit_data)
         edit_button.pack(side="left", padx=5)
         # Button to delete stock
-        delete_button = ttk.Button(button_display, text="Delete Stock", command=self.delete_stock)
+        delete_button = ttk.Button(button_display, text="Delete Stock", command=self.delete_data)
         delete_button.pack(side="left", padx=5)
 
-    def on_double_click(self):
-        self.edit_stock
+    def add_item(self):
+        new_window = InventoryAddToplvl()
 
-    def add_stock(self):
-        pass
-    
-    def edit_stock(self):
-        pass
-    
-    def delete_stock(self):
-        pass
+        self.wait_window(new_window)
 
+        self.load_data()
+    
+    def edit_item(self):
+        id = super().get_selected_item()
+        if id is None:
+            return
+        
+        inventory_query = ds.InventoryData(id_str=id)
+
+        # Fetch the specific data entry from the database
+        item_data = self._controller._database.fetch_data(inventory_query)
+
+        # Open a window to edit the existing data
+        new_window = InventoryEditToplvl(item_data)
+
+        # Freeze the main window while the edit window is open
+        self.wait_window(new_window)
+
+        # Refresh the data after the edit window closes
+        self.load_data()
+    
+    def delete_item(self):
+        id = super().get_selected_item()
+        if id is None:
+            return
+        
+        inventory_query = ds.InventoryData(id_str=id)
+
+        if messagebox.askokcancel(title="Confirm delete", message="This will delete the selected entry. Are you sure?"):
+            self._controller._database.delete_data(inventory_query)
+
+        self.load_data()
+        
 
     def load_data(self):
         """
@@ -190,16 +294,6 @@ class InventoryFrame(ttk.Frame):
                 r["current_quantity"]
             ))
 
-    def clear_search(self):
-        """
-        Clears the search params and then gets all data from the database
-
-        """
-        for p in self._search_params:
-            p.set("")
-
-        self.load_data()
-
     def valid_params(self):
         """
         Checks the search params to make sure they are valid
@@ -218,16 +312,52 @@ class InventoryFrame(ttk.Frame):
             self._validity_log.error(f"Location name {location_name} is invalid")
 
 
-class LocationFrame(ttk.Frame):
+class LocationFrame(DataFrame):
     def __init__(self, parent, controller):
         pass
 
-class StockFrame(ttk.Frame):
+class StockFrame(DataFrame):
     def __init__(self, parent, controller):
         pass
 
-
-class LogFrame(ttk.Frame):
+class QuantityFrame(DataFrame):
     def __init__(self, parent, controller):
         pass
 
+class LogFrame(DataFrame):
+    def __init__(self, parent, controller):
+        pass
+
+###############
+## TopLevels ##
+###############
+# Toplevels to allow databases to be edited and added to
+
+class AddToplvl(tk.Toplevel):
+    def __init__(self, parent):
+        super().__init__(parent)
+
+
+class InventoryAddToplvl(AddToplvl):
+    def __init__(self, parent, controller, inventory_data):
+        super().__init__(parent)
+        self._controller = controller
+
+class LocationAddToplvl(AddToplvl):
+    pass
+
+class StockAddToplvl(AddToplvl):
+    pass
+
+
+class EditToplvl(tk.Toplevel):
+    pass
+
+class InventoryEditToplvl(EditToplvl):
+    pass
+
+class LocationEditToplvl(EditToplvl):
+    pass
+
+class StockEditToplvl(EditToplvl):
+    pass
