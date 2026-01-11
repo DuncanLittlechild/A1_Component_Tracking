@@ -2,6 +2,8 @@ import sqlite3 as sql
 from contextlib import contextmanager
 import data_structures as ds
 
+from tkinter import messagebox
+
 
 from platformdirs import user_data_dir
 import sqlite3 as sql
@@ -13,6 +15,10 @@ _G_UPDATE_STR = "update"
 _G_DELETE_STR = "delete"
 
 class Database:
+    _add_log_string = 'Created'
+    _delete_log_string = 'Removed'
+    _update_log_string = 'Updated'
+
     def __init__(self):
         # Gets the user data directory, creates a directory to hold the database and gets a path to where the databse should be created 
         data_dir = Path(user_data_dir("A1_component_tracking"))
@@ -58,7 +64,17 @@ class Database:
     def check_restock(self):
         """
         Check if any items of stock need a restock
+        Returns a list of items that need restocking
         """
+        # Use a blank datastructure to get the quantity of all stock
+        total_quantities = self.fetch_quantity_data(ds.QuantityData())
+        restock_list = []
+        for row in total_quantities:
+            if row["restock_quantity"] >= row["current_quantity"]:
+                restock_list.append(row)
+
+        return restock_list
+
 
 
     ######################
@@ -66,7 +82,8 @@ class Database:
     ######################
     def add_data(self, data: ds.SqlData):
         """
-        Helper to direct add queries to the correct subfunction        
+        Helper to direct add queries to the correct subfunction
+        Logdata is not a case as this should always be directly called from sucessful database operations   
         """
         match data:
             case ds.StockData():
@@ -77,10 +94,15 @@ class Database:
                 return self.add_inventory_data(data)
             
     def add_stock_data(self, data: ds.StockData):
-        pass
+        with self.get_database_connection() as conn:
+            cur = conn.execute("INSERT INTO stock_data (name, base_quantity, restock_quantity)", (data._name, data._base_quantity, data._restock_quantity))
 
     def add_location_data(self, data: ds.LocationData):
-        pass
+        """
+        Adds new locations to location_data        
+        """
+        with self.get_database_connection() as conn:
+            cur = conn.execute("INSERT INTO location_data (name) VALUES (?)", (data._name,))
 
     def add_inventory_data(self, data: ds.InventoryData):
         query = """
@@ -88,12 +110,47 @@ class Database:
                 current_inventory (stock_id, location_id, current_quantity)
             VALUES ((SELECT id FROM stock_data WHERE name = ?),(SELECT id FROM location_data WHERE name = ?), (SELECT base_quantity FROM stock_data WHERE name = ?))
         """
-        params = (data._stock_type._name, data._location._name, data._stock_type._name)
+        stock_name = data._stock_type._name
+        location_name = data._location._name
+
+        params = (stock_name, location_name, stock_name)
         with self.get_database_connection() as conn:
             cur = conn.execute(query, params)
+            log_data = ds.LogData(stock_name=stock_name, location_name=location_name, activity_type=self._add_log_string,update_details=None)
+            self.add_log_data(log_data, conn)
 
-    def add_log_data(self, data: ds.LogData):
-        pass
+    def add_log_data(self, data: ds.LogData, conn: sql.Connection):
+        """
+        Dynamically adds the relevant data to the activity_logs
+        """
+        # Gets the relevant keywords
+        fields_to_insert = "stock_id, location_id, activity_type"
+        values_to_insert = """
+            (SELECT id FROM stock_data WHERE name = ?),
+            (SELECT id FROM location_data WHERE name = ?),
+            ?
+            """
+        params = [data._stock_name, data._location_name, data._activity_type]
+
+        if data._update_details:
+            fields_to_insert += ", update_details"
+            values_to_insert += ", ?"
+            params.append(data._update_details)
+
+        if data._quantity_change:
+            fields_to_insert += ", quantity_change"
+            values_to_insert += ", ?"
+            params.append(data._quantity_change)
+
+        query = f"""
+            INSERT INTO
+                activity_logs
+                ({fields_to_insert})
+            VALUES
+                ({values_to_insert})
+        """
+
+        conn.execute(query, tuple(params))
             
 
     ########################
@@ -109,14 +166,53 @@ class Database:
             case ds.LocationData():
                 return self.fetch_location_data(data)
             case ds.InventoryData():
-                print("diverted")
                 return self.fetch_inventory_data(data)
+            case ds.QuantityData():
+                return self.fetch_quantity_data(data)
+            case _:
+                raise Exception("Unrecognised type in fetch_data")
             
     def fetch_stock_data(self, data: ds.StockData):
-        pass
+        """
+        Dynamically constructs a query to find the necessary data on known stock types
+        """
+        query = """
+            SELECT
+                *
+            FROM
+                stock_data
+            WHERE 1=1
+        """
+        params = []
+        if data._id_str:
+            query += " AND id = ?"
+            params.append(data._id_str)
+
+        with self.get_database_connection() as conn:
+            cur = conn.execute(query, tuple(params))
+            return [dict(row) for row in cur.fetchall()]
+
 
     def fetch_location_data(self, data: ds.LocationData):
-        pass
+        """
+        Dynamically constructs a query to find the necessary data on known locations
+        """
+        query = """
+            SELECT
+                *
+            FROM
+                location_data
+            WHERE 1=1
+        """
+        params = []
+        if data._id_str:
+            query += " AND id = ?"
+            params.append(data._id_str)
+
+        with self.get_database_connection() as conn:
+            cur = conn.execute(query, tuple(params))
+            return [dict(row) for row in cur.fetchall()]
+
 
     def fetch_inventory_data(self, data: ds.InventoryData):
         """
@@ -156,10 +252,35 @@ class Database:
         """
         Fetches data on current stock quantity filtered by type and location
         """
+        # For each stock type, sum the current quantities of every stock instance of that type
         query = """
             SELECT
-
+                stock_data.id AS id
+                stock_data.name AS name
+                stock_data.restock_quantity as restock_quantity
+                SUM(current_inventory.current_quantity) AS total_quantity
+            FROM
+                stock_data
+            INNER JOIN current_inventory ON current_inventory.stock_id = stock_data.id
+            WHERE 1=1
         """
+        params = []
+        if data._stock_name:
+            query += " AND stock_data.name = ?"
+            params.append(data._stock_name)
+
+        if data._location_name:
+            query += " AND current_inventory.location_id = (SELECT id FROM location_data WHERE name = ?)"
+            params.append(data._location_name)
+
+        query += """
+            GROUP_BY stock_data.name
+            ORDER_BY stock_data.name
+        """
+        with self.get_database_connection() as conn:
+            cur = conn.execute(query, params)
+            return [dict(row) for row in cur.fetchall()]
+
         
     def fetch_log_data(self,data: ds.LogData):
         """
@@ -216,15 +337,75 @@ class Database:
                 return self.update_inventory_data(data)
             
     def update_stock_data(self, data: ds.StockData):
-        pass
+        """
+        Updates the name, base quantity, or restock quantity of a specific location
+        Prevents stock being given duplicate names
+        """
+        query = """
+            UPDATE stock_data
+            SET id = ?
+        """
+        params = [data._id_str]
+        # Check to see if a name already exists. If it does, do noat allow this operation
+        if data._name:
+            already_exists = self.fetch_data(ds.StockData(name=data._name))
+            if len(already_exists) > 0:
+                messagebox.showerror(title="Name already exists", message="Another stock type already has that name. Please choose a different one.")
+                return
+            query += ", name = ?"
+            params.append(data._name)
+
+        if data._restock_quantity:
+            query += ", restock_quantity = ?"
+            params.append(data._restock_quantity)
+
+        if data._base_quantity:
+            query += ", base_quantity = ?"
+            params.append(data._base_quantity)
+
+        query += " WHERE id = ?"
+        params.append(data._id_str)
+
+        with self.get_database_connection() as conn:
+            cur = conn.execute(query, tuple(params))
 
     def update_location_data(self, data: ds.LocationData):
-        pass
+        """
+        Updates the name of a specific location
+        Prevents locations from being given duplicate names
+        """
+        query = """
+            UPDATE stock_data
+            SET id = ?
+        """
+        params = [data._id_str]
+        # Check to see if a name already exists. If it does, do noat allow this operation
+        if data._name:
+            already_exists = self.fetch_data(ds.LocationData(name=data._name))
+            if len(already_exists) > 0:
+                messagebox.showerror(title="Name already exists", message="Another location already has that name. Please choose a different one.")
+                return
+            query += ", name = ?"
+            params.append(data._name)
+
+        if data._restock_quantity:
+            query += ", restock_quantity = ?"
+            params.append(data._restock_quantity)
+
+        if data._base_quantity:
+            query += ", base_quantity = ?"
+            params.append(data._base_quantity)
+
+        query += " WHERE id = ?"
+        params.append(data._id_str)
+
+        with self.get_database_connection() as conn:
+            cur = conn.execute(query, tuple(params))
 
     def update_inventory_data(self, data: ds.InventoryData):
         query = """
             UPDATE current_inventory
-            SET stock_id = ?
+            SET id = ?
         """
         params = [data._id_str]
         if data._location._name:
@@ -235,7 +416,7 @@ class Database:
             query += ", current_quantity = ?"
             params.append(data._quantity)
 
-        query += " WHERE stock_id = ?"
+        query += " WHERE id = ?"
         params.append(data._id_str)
 
         with self.get_database_connection() as conn:
@@ -260,14 +441,34 @@ class Database:
                 return self.delete_inventory_data(data)
             
     def delete_stock_data(self, data: ds.StockData):
-        pass
+        """
+        Deletes stock data.
+        This action is prevented if any existing instances reference the stock data
+        """
+        currently_used = self.fetch_data(ds.InventoryData(stock_type=ds.StockData(name=data._name)))
+        if len(currently_used) > 0:
+            messagebox.showerror(title="Stock in use", message="This data entry cannot be deleted, as there are stock instances that currently use it")
+            return
+        
+        with self.get_database_connection() as conn:
+            cur = conn.execute("DELETE FROM stock_data WHERE id = ?", (data._id_str,))
 
     def delete_location_data(self, data: ds.LocationData):
-        pass
+        """
+        Deletes location data.
+        This action is prevented if any existing instances reference the location data
+        """
+        currently_used = self.fetch_data(ds.InventoryData(location=ds.LocationData(name=data._name)))
+        if len(currently_used) > 0:
+            messagebox.showerror(title="Stock in use", message="This data entry cannot be deleted, as there are stock instances that currently use it")
+            return
+        
+        with self.get_database_connection() as conn:
+            cur = conn.execute("DELETE FROM location_data WHERE id = ?", (data._id_str,))
 
     def delete_inventory_data(self, data: ds.InventoryData):
         with self.get_database_connection() as conn:
-            cur = conn.execute("DELETE FROM current_inventory WHERE id = ?", (data._id_str))
+            cur = conn.execute("DELETE FROM current_inventory WHERE id = ?", (data._id_str,))
 
     #############
     ## Logging ##

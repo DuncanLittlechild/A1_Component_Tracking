@@ -17,7 +17,7 @@ class StockData(SqlData):
     Passes data on stock types between the ui and the database
     """
     def __init__(self, restock_quantity: str = None, id_str: str = None, name: str = None, base_quantity: str = None):
-        self._id = id_str
+        self._id_str = id_str
         self._name = name
         self._restock_quantity = restock_quantity
         self._base_quantity = base_quantity

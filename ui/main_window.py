@@ -1,5 +1,6 @@
 import tkinter as tk
 from tkinter import ttk
+from tkinter import messagebox
 from database import Database
 from ui.frames import ChooseFrame, InventoryFrame, LocationFrame, StockFrame, LogFrame
 
@@ -37,6 +38,13 @@ class App(tk.Tk):
         self.container.pack(fill="both", expand="true")
 
         self.show_frame(ChooseFrame)
+        # Every time the program is started, the database is checked to see if any items need restocking
+        # If they do, an error message is displayed with the names of the relevant stock items
+        to_restock = self._database.check_restock()
+        if len(to_restock) > 0:
+            need_restock_list = [row["name"] for row in to_restock]
+            need_restock_str = ";\n".join(need_restock_list)
+            messagebox.showwarning(title="Items need restocking!", message=f"The following items need restocking:\n {need_restock_str}")
 
     def create_menu_bar(self):
         """
