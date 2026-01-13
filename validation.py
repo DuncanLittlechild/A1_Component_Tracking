@@ -13,11 +13,15 @@ class ValidityCheck:
         self.data = data
 
     def error(self, msg: str):
-        self._success = False
-        if self._msg == "":
-            self._msg = msg
+        self.success = False
+        if self.msg == "":
+            self.msg = msg
         else:
-            self._msg += f"; {msg}"
+            self.msg += f"; {msg}"
+
+    def reset(self):
+        self.success = True
+        self.msg = ""
 
 def is_valid_name(name: tk.StringVar)->bool:
     """
