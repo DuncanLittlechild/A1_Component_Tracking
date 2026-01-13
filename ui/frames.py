@@ -72,27 +72,6 @@ class DataFrame(ttk.Frame, ABC):
         pass
 
     @abstractmethod
-    def add_item(self):
-        """
-        Displays the toplevel window to add items to the database
-        """
-        pass
-
-    @abstractmethod
-    def edit_item(self):
-        """
-        Displays the toplevel window to edit items in the databsee
-        """
-        pass
-
-    @abstractmethod
-    def delete_item(self):
-        """
-        Confirms deletion then deletes item from the database
-        """
-        pass
-
-    @abstractmethod
     def load_data(self):
         """
         Retreive data from the database, and use it to reconstruct the treeview
@@ -234,8 +213,12 @@ class InventoryFrame(DataFrame):
         # Fetch the specific data entry from the database
         item_data = self._controller._database.fetch_data(inventory_query)
 
+        inventory_query._location._name = item_data["location"]
+        inventory_query._stock_type._name = item_data["stock_name"]
+        inventory_query._quantity = item_data["current_quantity"]
+
         # Open a window to edit the existing data
-        new_window = InventoryPopup(self, self._controller, item_data)
+        new_window = InventoryPopup(self, self._controller, inventory_query)
 
         # Freeze the main window while the edit window is open
         self.wait_window(new_window)
@@ -269,7 +252,6 @@ class InventoryFrame(DataFrame):
         # If no params are given, a blank object will be generated, which will return all possible datapoints
         stock_data = ds.StockData(name=self._search_params["name"].get()) if self._search_params["name"].get() != "" else ds.StockData()
         location_data = ds.LocationData(name=self._search_params["location"].get()) if self._search_params["location"].get() != "" else ds.LocationData()
-        # TODO: Check that the data is valid
 
         query = ds.InventoryData(stock_type=stock_data, location=location_data)
 
@@ -299,7 +281,7 @@ class InventoryFrame(DataFrame):
         """
         valid.normalise_params(self._search_params)
 
-        self._validity_log.success = True
+        self._validity_log.reset()
 
         stock_name = self._search_params["name"]
         location_name = self._search_params["location"]
@@ -420,10 +402,15 @@ class LocationFrame(DataFrame):
         location_query = ds.LocationData(id_str=id)
 
         # Fetch the specific data entry from the database
-        item_data = self._controller._database.fetch_data(location_query)
+        try:
+            item_data = self._controller._database.fetch_data(location_query)
+        except:
+            messagebox.showerror(title="Fetch failed", message="Failed to fetch item from database")
+
+        location_query._name = item_data["name"]
 
         # Open a window to edit the existing data
-        new_window = LocationPopup(item_data)
+        new_window = LocationPopup(location_query)
 
         # Freeze the main window while the edit window is open
         self.wait_window(new_window)
@@ -439,7 +426,10 @@ class LocationFrame(DataFrame):
         location_query = ds.LocationData(id_str=id)
 
         if messagebox.askokcancel(title="Confirm delete", message="This will delete the selected entry. Are you sure?"):
-            self._controller._database.delete_data(location_query)
+            try:
+                self._controller._database.delete_data(location_query)
+            except:
+                messagebox.showerror(title="Fetch failed", message="Failed to fetch item from database")
 
         self.load_data()
 
@@ -483,7 +473,7 @@ class LocationFrame(DataFrame):
         """
         valid.normalise_params(self._search_params)
 
-        self._validity_log.success = True
+        self._validity_log.reset()
 
         stock_name = self._search_params["name"]
 
@@ -493,15 +483,501 @@ class LocationFrame(DataFrame):
 
 class StockFrame(DataFrame):
     def __init__(self, parent, controller):
-        pass
+        super().__init__(parent)
+        self._controller = controller
+
+        self._search_params = {
+            "name": tk.StringVar(),
+            "restock_quantity": tk.StringVar()
+        }
+
+        self._validity_log = valid.ValidityCheck()
+
+        self.create_widgets()
+
+        self.load_data()
+
+    def create_widgets(self):
+        """
+        Creates the widgets needed for the stock types frame
+        """
+        title_label = ttk.Label(self, text="Stock types")
+        title_label.pack()
+
+        ## Create search bars ##
+        search_bars = ttk.Frame(self)
+        search_bars.pack(fill="x", padx=10, pady=5)
+
+        # Bar to search for name
+        name_search_label = ttk.Label(search_bars, text="Name:")
+        name_search_label.grid(row=0, column=0, sticky="w", padx=5, pady=2)
+        name_search_entry = ttk.Entry(search_bars, textvariable=self._search_params["name"])
+        name_search_entry.grid(row=0, column=1, sticky="ew", padx=5, pady=2)
+        
+        self._show_restock = tk.BooleanVar()
+
+        restock_checkbox = ttk.Checkbutton(
+            master,
+            text='Need restock',
+            command=self.load_data,
+            variable=self._show_restock,
+        )
+        restock_checkbox.grid(row=1, column=0. padx=5, pady=2)
+
+        # Buttons to submit search query
+        search_button = ttk.Button(search_bars, text="Search", command=self.load_data)
+        search_button.grid(row=3, column=0, padx=5, pady=5)
+        clear_button = ttk.Button(search_bars, text="Clear", command=super().clear_search)
+        clear_button.grid(row=3, column=1, sticky="w", padx=5, pady=5)
+
+        ## Create table ##
+        table_display = ttk.Frame(self)
+        table_display.pack(fill="both", expand=True, padx=10, pady=5)
+
+        # Setup scroll bars
+        vertical_scroll = ttk.Scrollbar(table_display, orient="vertical")
+        horizontal_scroll = ttk.Scrollbar(table_display, orient="horizontal")
+
+        # Setup treeview as table
+        self._table = ttk.Treeview(
+            table_display,
+            columns=("id", "name", "restock_quantity"),
+            show="headings",
+            yscrollcommand=vertical_scroll.set,
+            xscrollcommand=horizontal_scroll.set
+        )
+
+        # Ensure the table scrolls when the bar is moved
+        vertical_scroll.config(command=self._table.yview)
+        horizontal_scroll.config(command=self._table.xview)
+
+        # Setup column headings
+        self._table.heading("id", text="ID")
+        self._table.heading("name", text="Name")
+        self._table.heading("restock_quantity", text="Restock quantity")
+
+        # Setup column appearances
+        self._table.column("id",width=50, anchor="center")
+        self._table.column("name", width=200)
+        self._table.column("restock_quantity", width=200)
+
+        # Place the table and the scrollbars in the frame
+        self._table.grid(row=0, column=0, sticky="nsew")
+        vertical_scroll.grid(row=0, column=1, sticky="ns")
+        horizontal_scroll.grid(row=1, column=0, sticky="ew")
+
+        # Ensure the table resizes automatically when the window is resized
+        table_display.grid_rowconfigure(0,weight=1)
+        table_display.grid_columnconfigure(0, weight=1)
+
+        # Create custom behaviour for when a table row is clicked
+        self._table.bind("<Double-1>", super().on_double_click)
+
+        ## Create buttons ##
+        button_display = ttk.Frame(self)
+        button_display.pack(fill="x", padx=10, pady=5)
+
+        # Button to add stock type
+        add_button = ttk.Button(button_display, text="Add Stock Type", command=self.add_data)
+        add_button.pack(side="left", padx=5)
+        # Button to edit stock type
+        edit_button = ttk.Button(button_display, text="Edit Stock Type", command=self.edit_data)
+        edit_button.pack(side="left", padx=5)
+        # Button to delete stock type
+        delete_button = ttk.Button(button_display, text="Delete Stock Type", command=self.delete_data)
+        delete_button.pack(side="left", padx=5)
+
+    def add_item(self):
+        new_window = StockPopup(self, self._controller)
+
+        self.wait_window(new_window)
+
+        self.load_data()
+    
+    def edit_item(self):
+        id = super().get_selected_item()
+        if id is None:
+            return
+        
+        stock_query = ds.StockData(id_str=id)
+        
+        # Fetch the specific data entry from the database
+        try:
+            item_data = self._controller._database.fetch_data(stock_query)
+        except:
+            messagebox.showerror(title="Fetch failed", message="Failed to fetch item from database")
+
+        stock_query._name = item_data["name"]
+        stock_query._restock_quantity = item_data["restock_quantity"]
+
+        # Open a window to edit the existing data
+        new_window = StockPopup(self, self._controller, stock_query)
+
+        # Freeze the main window while the edit window is open
+        self.wait_window(new_window)
+
+        # Refresh the data after the edit window closes
+        self.load_data()
+    
+    def delete_item(self):
+        id = super().get_selected_item()
+        if id is None:
+            return
+        
+        stock_query = ds.StockData(id_str=id)
+
+        if messagebox.askokcancel(title="Confirm delete", message="This will delete the selected entry. Are you sure?"):
+            try:
+                self._controller._database.delete_data(stock_query)
+            except:
+                messagebox.showerror(title="Delete failed", message="Failed to delete item from database")
+
+        self.load_data()
+
+    def load_data(self):
+        """
+        Loads data from the database according to the search parameters and updates the table
+        """
+        # Check that the inputted data is valid
+        self.valid_params()
+        if not self._validity_log.success:
+            messagebox.showerror(title="Invalid Parameters", message=self._validity_log._msg)
+            return
+
+        # Construct a StockData object
+        # If no params are given, a blank object will be generated, which will return all possible datapoints
+        name = self._search_params["name"].get() if self._search_params["name"].get() != "" else None
+        
+        query = ds.StockData(name=name)
+
+        # Send it to the database
+        try:
+            results = self._controller._database.fetch_data(query)
+            # If the option to only show items that need restocking is on, get the list of items that need restocking, and create a sub-list containing only those values that intersect
+            if self._show_restock.get():
+                need_restock_dict = self._controller._database.check_restock()
+                need_restock_name_set = {stock["id"] for stock in need_restock}
+                results = [r for r in results if r["id"] in need_restock_name_set]
+        except Exception as e:
+            messagebox.showerror(title="Fetch failed", message="Failed to fetch from database")
+            return
+
+        # Delete the current results of the table
+        for row in self._table.get_children():
+            self._table.delete(row)
+
+        # Display the new results in the table
+        for r in results:
+            self._table.insert("", "end", values=(
+                r["id"],
+                r["name"],
+                r["restock_quantity"]
+            ))
+        
+    def valid_params(self):
+        """
+        Checks the search params to make sure they are valid
+        """
+        valid.normalise_params(self._search_params)
+
+        self._validity_log.reset()
+
+        stock_name = self._search_params["name"]
+        
+        if not valid.is_valid_name(stock_name):
+            self._validity_log.error(f"Stock name {stock_name} is invalid")
 
 class QuantityFrame(DataFrame):
     def __init__(self, parent, controller):
-        pass
+        super().__init__(parent)
+        self._controller = controller
+
+        self._search_params = {
+            "name": tk.StringVar(),
+            "location": tk.StringVar()
+        }
+
+        self._validity_log = valid.ValidityCheck()
+
+        self.create_widgets()
+
+        self.load_data()
+
+    def create_widgets(self):
+        """
+        Creates the widgets needed for the stock types frame
+        """
+        title_label = ttk.Label(self, text="Stock quantities")
+        title_label.pack()
+
+        ## Create search bars ##
+        search_bars = ttk.Frame(self)
+        search_bars.pack(fill="x", padx=10, pady=5)
+
+        # Bar to search for name
+        name_search_label = ttk.Label(search_bars, text="Name:")
+        name_search_label.grid(row=0, column=0, sticky="w", padx=5, pady=2)
+        name_search_entry = ttk.Entry(search_bars, textvariable=self._search_params["name"])
+        name_search_entry.grid(row=0, column=1, sticky="ew", padx=5, pady=2)
+
+        # Bar to search for location
+        location_search_label = ttk.Label(search_bars, text="Location:")
+        location_search_label.grid(row=1, column=0, sticky="w", padx=5, pady=2)
+        location_search_entry = ttk.Entry(search_bars, textvariable=self._search_params["location"])
+        location_search_entry.grid(row=1, column=1, sticky="ew", padx=5, pady=2)
+        
+        self._show_restock = tk.BooleanVar()
+
+        restock_checkbox = ttk.Checkbutton(
+            master,
+            text='Need restock',
+            command=self.load_data,
+            variable=self._show_restock,
+        )
+        restock_checkbox.grid(row=2, column=0. padx=5, pady=2)
+
+        # Buttons to submit search query
+        search_button = ttk.Button(search_bars, text="Search", command=self.load_data)
+        search_button.grid(row=3, column=0, padx=5, pady=5)
+        clear_button = ttk.Button(search_bars, text="Clear", command=super().clear_search)
+        clear_button.grid(row=3, column=1, sticky="w", padx=5, pady=5)
+
+        ## Create table ##
+        table_display = ttk.Frame(self)
+        table_display.pack(fill="both", expand=True, padx=10, pady=5)
+
+        # Setup scroll bars
+        vertical_scroll = ttk.Scrollbar(table_display, orient="vertical")
+        horizontal_scroll = ttk.Scrollbar(table_display, orient="horizontal")
+
+        # Setup treeview as table
+        self._table = ttk.Treeview(
+            table_display,
+            columns=("id", "name", "current_quantity"),
+            show="headings",
+            yscrollcommand=vertical_scroll.set,
+            xscrollcommand=horizontal_scroll.set
+        )
+
+        # Ensure the table scrolls when the bar is moved
+        vertical_scroll.config(command=self._table.yview)
+        horizontal_scroll.config(command=self._table.xview)
+
+        # Setup column headings
+        self._table.heading("id", text="ID")
+        self._table.heading("name", text="Name")
+        self._table.heading("current_quantity", text="Current quantity")
+
+        # Setup column appearances
+        self._table.column("id",width=50, anchor="center")
+        self._table.column("name", width=200)
+        self._table.column("current_quantity", width=200)
+
+        # Place the table and the scrollbars in the frame
+        self._table.grid(row=0, column=0, sticky="nsew")
+        vertical_scroll.grid(row=0, column=1, sticky="ns")
+        horizontal_scroll.grid(row=1, column=0, sticky="ew")
+
+        # Ensure the table resizes automatically when the window is resized
+        table_display.grid_rowconfigure(0,weight=1)
+        table_display.grid_columnconfigure(0, weight=1)
+
+        ## Create buttons ##
+        button_display = ttk.Frame(self)
+        button_display.pack(fill="x", padx=10, pady=5)
+
+    def load_data(self):
+        """
+        Loads data from the database according to the search parameters and updates the table
+        """
+        # Check that the inputted data is valid
+        self.valid_params()
+        if not self._validity_log.success:
+            messagebox.showerror(title="Invalid Parameters", message=self._validity_log._msg)
+            return
+
+        # Construct a QuantityData object
+        # If no params are given, a blank object will be generated, which will return all possible datapoints
+        name = self._search_params["name"].get() if self._search_params["name"].get() != "" else None
+        
+        query = ds.QuantityData(name=name)
+
+        # Send it to the database
+        try:
+            results = self._controller._database.fetch_data(query)
+            # If the option to only show items that need restocking is on, get the list of items that need restocking, and create a sub-list containing only those values that intersect
+            if not self._show_restock.get():
+                need_restock_dict = self._controller._database.check_restock()
+                need_restock_name_set = {stock["id"] for stock in need_restock}
+                results = [r for r in results if r["id"] in need_restock_name_set]
+        except Exception as e:
+            messagebox.showerror(title="Fetch failed", message="Failed to fetch from database")
+            return
+
+        # Delete the current results of the table
+        for row in self._table.get_children():
+            self._table.delete(row)
+
+        # Display the new results in the table
+        for r in results:
+            self._table.insert("", "end", values=(
+                r["id"],
+                r["name"],
+                r["total_quantity"]
+            ))
+        
+    def valid_params(self):
+        """
+        Checks the search params to make sure they are valid
+        """
+        valid.normalise_params(self._search_params)
+
+        self._validity_log.reset()
+
+        name = self._search_params["name"]
+        location=self._search_params["location"]
+        
+        if not valid.is_valid_name(name):
+            self._validity_log.error(f"Stock name {name} is invalid")
+
+        if not valid.is_valid_name(location):
+            self._validity_log.error(f"Location name {location} is invalid"
+        
 
 class LogFrame(DataFrame):
     def __init__(self, parent, controller):
-        pass
+        super().__init__(parent)
+        self._controller = controller
+
+        self._search_params = {
+            "name": tk.StringVar(),
+        }
+
+        self._validity_log = valid.ValidityCheck()
+
+        self.create_widgets()
+
+        self.load_data()
+
+    def create_widgets(self):
+        """
+        Creates the widgets needed for the stock types frame
+        """
+        title_label = ttk.Label(self, text="Activity logs")
+        title_label.pack()
+
+        ## Create search bars ##
+        search_bars = ttk.Frame(self)
+        search_bars.pack(fill="x", padx=10, pady=5)
+
+        # Bar to search for name
+        name_search_label = ttk.Label(search_bars, text="Stock Name:")
+        name_search_label.grid(row=0, column=0, sticky="w", padx=5, pady=2)
+        name_search_entry = ttk.Entry(search_bars, textvariable=self._search_params["name"])
+        name_search_entry.grid(row=0, column=1, sticky="ew", padx=5, pady=2)
+
+        # Buttons to submit search query
+        search_button = ttk.Button(search_bars, text="Search", command=self.load_data)
+        search_button.grid(row=1, column=0, padx=5, pady=5)
+        clear_button = ttk.Button(search_bars, text="Clear", command=super().clear_search)
+        clear_button.grid(row=1, column=1, sticky="w", padx=5, pady=5)
+
+        ## Create table ##
+        table_display = ttk.Frame(self)
+        table_display.pack(fill="both", expand=True, padx=10, pady=5)
+
+        # Setup scroll bars
+        vertical_scroll = ttk.Scrollbar(table_display, orient="vertical")
+        horizontal_scroll = ttk.Scrollbar(table_display, orient="horizontal")
+
+        # Setup treeview as table
+        self._table = ttk.Treeview(
+            table_display,
+            columns=("id", "stock_name", "location_name", "activity_type", "update_details", "date_occurred"),
+            show="headings",
+            yscrollcommand=vertical_scroll.set,
+            xscrollcommand=horizontal_scroll.set
+        )
+
+        # Ensure the table scrolls when the bar is moved
+        vertical_scroll.config(command=self._table.yview)
+        horizontal_scroll.config(command=self._table.xview)
+
+        # Setup column headings
+        self._table.heading("id", text="ID")
+        self._table.heading("stock_name", text="Stock Name")
+        self._table.heading("location_name", text="Location Name")
+        self._table.heading("activity_type", text="Activity Type")
+        self._table.heading("update_details", text="Update details")
+        self._table.heading("date_occurred", text="Date Occurred")
+
+        # Setup column appearances
+        self._table.column("id",width=50, anchor="center")
+        self._table.column("stock_name", width=200)
+        self._table.column("location_name", width=200)
+        self._table.column("activity_type", width=200)
+        self._table.column("update_details", width=200)
+        self._table.column("date_occurred", width=200)
+
+        # Place the table and the scrollbars in the frame
+        self._table.grid(row=0, column=0, sticky="nsew")
+        vertical_scroll.grid(row=0, column=1, sticky="ns")
+        horizontal_scroll.grid(row=1, column=0, sticky="ew")
+
+        # Ensure the table resizes automatically when the window is resized
+        table_display.grid_rowconfigure(0,weight=1)
+        table_display.grid_columnconfigure(0, weight=1)
+
+    def load_data(self):
+        """
+        Loads data from the database according to the search parameters and updates the table
+        """
+        # Check that the inputted data is valid
+        self.valid_params()
+        if not self._validity_log.success:
+            messagebox.showerror(title="Invalid Parameters", message=self._validity_log._msg)
+            return
+
+        # Construct a StockData object
+        # If no params are given, a blank object will be generated, which will return all possible datapoints
+        name = self._search_params["name"].get() if self._search_params["name"].get() != "" else None
+        
+        query = ds.LogData(stock_name=name)
+
+        # Send it to the database
+        try:
+            results = self._controller._database.fetch_data(query)
+        except Exception as e:
+            messagebox.showerror(title="Fetch failed", message="Failed to fetch from database")
+            return
+
+        # Delete the current results of the table
+        for row in self._table.get_children():
+            self._table.delete(row)
+
+        # Display the new results in the table
+        for r in results:
+            self._table.insert("", "end", values=(
+                r["id"],
+                r["stock_name"],
+                r["location_name"],
+                r["activity_type"],
+                r["update_details"],
+                r["date_occurred"]
+            ))
+        
+    def valid_params(self):
+        """
+        Checks the search params to make sure they are valid
+        """
+        valid.normalise_params(self._search_params)
+
+        self._validity_log.success = True
+
+        stock_name = self._search_params["name"]
+        
+        if not valid.is_valid_name(stock_name):
+            self._validity_log.error(f"Stock name {stock_name} is invalid")
 
 ###############
 ## TopLevels ##
