@@ -206,6 +206,8 @@ class Database:
                 return self.fetch_inventory_data(data)
             case ds.QuantityData():
                 return self.fetch_quantity_data(data)
+            case ds.LogData():
+                return self.fetch_log_data(data)
             case _:
                 raise Exception("Unrecognised type in fetch_data")
             
