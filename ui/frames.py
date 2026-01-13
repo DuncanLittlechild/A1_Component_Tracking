@@ -218,7 +218,7 @@ class InventoryFrame(DataFrame):
         delete_button.pack(side="left", padx=5)
 
     def add_item(self):
-        new_window = InventoryToplvl(self, self._controller)
+        new_window = InventoryPopup(self, self._controller)
 
         self.wait_window(new_window)
 
@@ -235,7 +235,7 @@ class InventoryFrame(DataFrame):
         item_data = self._controller._database.fetch_data(inventory_query)
 
         # Open a window to edit the existing data
-        new_window = InventoryToplvl(self, self._controller, item_data)
+        new_window = InventoryPopup(self, self._controller, item_data)
 
         # Freeze the main window while the edit window is open
         self.wait_window(new_window)
@@ -406,7 +406,7 @@ class LocationFrame(DataFrame):
         delete_button.pack(side="left", padx=5)
 
     def add_item(self):
-        new_window = LocationAddToplvl()
+        new_window = LocationPopup()
 
         self.wait_window(new_window)
 
@@ -423,7 +423,7 @@ class LocationFrame(DataFrame):
         item_data = self._controller._database.fetch_data(location_query)
 
         # Open a window to edit the existing data
-        new_window = EditToplvl(item_data)
+        new_window = LocationPopup(item_data)
 
         # Freeze the main window while the edit window is open
         self.wait_window(new_window)
@@ -547,7 +547,7 @@ class Popup(tk.Toplevel, ABC):
         """
         pass
 
-class InventoryToplvl(Popup):
+class InventoryPopup(Popup):
     """
     Toplevel window that allows users to either add to or edit items in the current_inventory db
     """
@@ -727,7 +727,7 @@ class InventoryToplvl(Popup):
             self._validity_log.error("Location not found in database")
 
 
-class LocationAddToplvl(Popup):
+class LocationPopup(Popup):
     """
     Toplevel window that allows users to either add to or edit items in the location_data db
     """
@@ -834,34 +834,165 @@ class LocationAddToplvl(Popup):
         """
         self._validity_log.reset()
         
-        valid.normalise_params({"name": self._query._stock_type._name, "location": self._query._location._name, "current_quantity": self._query._quantity})
-        name = self._query._stock_type._name.get()
-        location = self._query._location._name.get()
-        current_quantity = self._query._quantity.get()
+        valid.normalise_params({"name": self._query._name})
+        name = self._query._name.get()
+
+        # Check that all values are formatted correctly
+        if not valid.is_valid_name(name):
+            self._validity_log.error(f"Location name {name} is invalid")
+
+        # Check that the name of the stock type is in the database
+        name_exists = self._controller._database.fetch_data(ds.StockData(name=name))
+
+        if len(name_exists) == 0:
+            self._validity_log.error("Location name not found in database")
+
+
+class StockPopup(Popup):
+    """
+    Toplevel window that allows users to either add to or edit items in the stock_data db
+    """
+    def __init__(self, parent: tk.Tk, controller, stock_data: ds.StockData = None):
+        super().__init__(parent)
+        self._controller = controller
+
+        self._validity_log = valid.ValidityCheck()
+
+        # If stock_data is None, then this is in create mod. Otherwise, it is in edit mode
+        self._stock_data = stock_data
+
+        if stock_data:
+            self.title("Edit stock")
+        else:
+            self.title("Create stock")
+
+        self.geometry("400x250")
+        self.transient(parent)
+        self.grab_set()
+
+        self._query = ds.StockData()
+
+        self.create_widgets()
+
+        if stock_data:
+            self.populate_fields()
+
+    def create_widgets(self):
+        ttk.Label(self, text="Stock").pack(pady=10)
+        entry_frame = ttk.Frame(self)
+        entry_frame.pack(fill="both", expand=True, padx=5, pady=10)
+
+        name_label = tk.Label(entry_frame, text="Name:")
+        name_label.grid(row=0, column=0, sticky="e", padx=10, pady=5)
+
+        self._name = tk.StringVar()
+
+        name_entry = ttk.Entry(entry_frame, textvariable=self._name, width=30)
+        
+        name_entry.grid(row=0, column=1, padx=10, pady=5)
+
+        if self._stock_data:
+            name_entry.config(stat="disabled")
+            self._new_name = tk.StringVar()
+
+            new_name_label = tk.Label(entry_frame, text="New Name:")
+            new_name_label.grid(row=2, column=0, sticky="e", padx=10, pady=5)
+
+            new_name_entry = ttk.Entry(entry_frame, textvariable=self._new_name, width=30)
+            new_name_entry.grid(row=2, column=1, padx=10, pady=5)
+
+        restock_label = tk.Label(entry_frame, text="Restock level:")
+        restock_label.grid(row=0, column=0, sticky="e", padx=10, pady=5)
+
+        self._restock_quantity = tk.StringVar()
+
+        restock_entry = ttk.Entry(entry_frame, textvariable=self._restock_quantity, width=30)
+        
+        restock_entry.grid(row=0, column=1, padx=10, pady=5)
+
+        if self._stock_data:
+            restock_entry.config(stat="disabled")
+            self._new_restock = tk.StringVar()
+
+            new_restock_label = tk.Label(entry_frame, text="New restock level:")
+            new_restock_label.grid(row=2, column=0, sticky="e", padx=10, pady=5)
+
+            new_restock_entry = ttk.Entry(entry_frame, textvariable=self._new_restock, width=30)
+            new_restock_entry.grid(row=2, column=1, padx=10, pady=5)
+
+        btn_frame = ttk.Frame(self)
+        btn_frame.pack(fill="x", expand=True, padx=10, pady=10)
+
+        # Create buttons with different labels depending on if data has been given
+        if self._inventory_data:
+            submit_btn = ttk.Button(btn_frame, text="Edit", command=lambda: self.edit_or_create(self._controller._database.update_data))
+        else:
+            submit_btn = ttk.Button(btn_frame, text="Create", command=lambda: self.edit_or_create(self._controller._database.create_data))
+        
+        submit_btn.pack(side="left", padx=5)
+
+        # Create exit button
+        exit_btn = ttk.Button(btn_frame, text="Exit", command=self.destroy).pack(side="left", padx=5)
+
+    def populate_fields(self):
+        """
+        If data was passed to this topwindow on creation, populate the entry fields with the relevant data
+        ""
+        # Check just in case this function is accidentally called from the wrong place
+        if not stock_data:
+            return None
+        name = self._stock_data._name
+        restock_quantity = self._stock_data._restock_quantity
+
+        self._name.set(name)
+        self._new_name.set(name)
+        self._restock_quantity.set(restock_quantity)
+        self._new_restock.set(restock_quantity)
+
+    def edit_or_create(self, database_method: method):
+        """
+        Uses given data to edit or create an existing database entry depending on the window's function
+        """
+        if self._stock_data:
+            name = self._new_name.get()
+            restock_quantity = self._new_restock.get()
+        else:
+            name = self._name.get()
+            restock_quantity = self._restock_quantity.get()
+
+        self._query._name = name
+        self._query._restock_quantity = restock_quantity
+        
+        self.valid_params()
+        
+        if not self._validity_log.success:
+            messagebox.showerror(title="Invalid Parameters", message=self._validity_log._msg)
+            return
+
+        try:
+            database_method(self._query)
+        except:
+            messagebox.showerror(title="Database Error", message="Unable to update database")
+    
+    def valid_params(self):
+        """
+        Checks to make sure all parameters are valid, and logs all invalid parameters
+        """
+        self._validity_log.reset()
+        
+        valid.normalise_params({"name": self._query._name, "restock_quantity": self._query._restock_quantity})
+        name = self._query._name.get()
+        restock_quantity = self._query._restock_quantity.get()
 
         # Check that all values are formatted correctly
         if not valid.is_valid_name(name):
             self._validity_log.error(f"Stock name {name} is invalid")
-        
-        if not valid.is_valid_name(location):
-            self._validity_log.error(f"Location name {location} is invalid")
 
-        if not valid.is_valid_num(current_quantity):
-            self._validity_log.error(f"Quantity entered is invalid")
+        if not valid.is_valid_num(restock_quantity):
+            self._validity_log.error(f"Restock quantity {restock_quantity} is invalid")
 
         # Check that the name of the stock type is in the database
         name_exists = self._controller._database.fetch_data(ds.StockData(name=name))
 
         if len(name_exists) == 0:
             self._validity_log.error("Stock name not found in database")
-
-        # check that the name of the location is in the database
-        location_exists = self._controller._database.fetch_data(ds.LocationData(name=location))
-
-        if len(location_exists) == 0:
-            self._validity_log.error("Location not found in database")
-
-
-
-class StockAddToplvl(Popup):
-    pass
