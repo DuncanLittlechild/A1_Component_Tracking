@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS current_inventory (
 
 CREATE TABLE IF NOT EXISTS activity_logs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    instance_id INTEGER NOT NULL,
     stock_id INTEGER NOT NULL,
     location_id INTEGER NOT NULL,
     activity_type TEXT CHECK (activity_type IN ('Created', 'Removed', 'Updated')),

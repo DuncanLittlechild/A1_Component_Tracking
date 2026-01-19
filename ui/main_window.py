@@ -65,9 +65,6 @@ class App(tk.Tk):
 
         self.config(menu=menu_bar)
 
-    def show_popup(self, frame_class: tk.Frame, title: str):
-        new_window = PopupWindow(self, frame_class, title)
-
     # Method to display a new frame of a set class
     def show_frame(self, frame_class: tk.Frame):
         """Remove a prior frame and display a new one of the class frameClass

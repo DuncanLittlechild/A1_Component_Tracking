@@ -97,12 +97,13 @@ class Database:
         """
         Adds new stock types to stock_data
         """
+        print("In add stock")
         if not data._name or not data._restock_quantity:
             self.missing_data_popup()
             return
-
+        print("All Data Present")
         with self.get_database_connection() as conn:
-            cur = conn.execute("INSERT INTO stock_data (name, restock_quantity)", (data._name, data._restock_quantity))
+            cur = conn.execute("INSERT INTO stock_data (name, restock_quantity) VALUES (?,?)", (data._name, data._restock_quantity))
 
     def add_location_data(self, data: ds.LocationData):
         """
@@ -469,7 +470,7 @@ class Database:
         params.append(data._id_str)
 
         # Set up the logdata object to be altered
-        log_data = ds.LogData(activity_type='Updated')
+        log_data = ds.LogData(instance_id=data._id_str, stock_id=data._stock_type._id_str, stock_name=data._stock_type._name, location_id=data._location._id_str, location_name=data._location._name, activity_type='Updated')
 
         with self.get_database_connection() as conn:
             # Get the original values before the query is sent off

@@ -38,18 +38,18 @@ class DataFrame(ttk.Frame, ABC):
     """
     Base frame to define the set of methods all dataframe must instantiate
     """
-    def on_double_click(self):
+    def on_double_click(self, **args):
         """
         Sets behvaiour for when a table entry is double clicked
         """
-        self.edit_data
+        self.edit_item()
     
     def clear_search(self):
         """
         Clears the search params and then gets all data from the database
         """
         for p in self._search_params:
-            p.set("")
+            self._search_params[p].set("")
 
         self.load_data()
 
@@ -211,11 +211,15 @@ class InventoryFrame(DataFrame):
         inventory_query = ds.InventoryData(id_str=id)
 
         # Fetch the specific data entry from the database
-        item_data = self._controller._database.fetch_data(inventory_query)
+        try:
+            item_data = self._controller._database.fetch_data(inventory_query)
+        except:
+            messagebox.showerror(title="Fetch failed", message="Failed to fetch item from database")
 
-        inventory_query._location._name = item_data["location"]
-        inventory_query._stock_type._name = item_data["stock_name"]
-        inventory_query._quantity = item_data["current_quantity"]
+
+        inventory_query._location._name = item_data[0]["location"]
+        inventory_query._stock_type._name = item_data[0]["stock_name"]
+        inventory_query._quantity = item_data[0]["current_quantity"]
 
         # Open a window to edit the existing data
         new_window = InventoryPopup(self, self._controller, inventory_query)
@@ -245,7 +249,7 @@ class InventoryFrame(DataFrame):
         # Check that the inputted data is valid
         self.valid_params()
         if not self._validity_log.success:
-            messagebox.showerror(title="Invalid Parameters", message=self._validity_log._msg)
+            messagebox.showerror(title="Invalid Parameters", message=self._validity_log.msg)
             return
 
         # Construct an InventoryData object
@@ -279,12 +283,12 @@ class InventoryFrame(DataFrame):
         """
         Checks the search params to make sure they are valid
         """
-        valid.normalise_params(self._search_params)
+        valid.normalise_stringvar_params(self._search_params)
 
         self._validity_log.reset()
 
-        stock_name = self._search_params["name"]
-        location_name = self._search_params["location"]
+        stock_name = self._search_params["name"].get()
+        location_name = self._search_params["location"].get()
 
         if not valid.is_valid_name(stock_name):
             self._validity_log.error(f"Stock name {stock_name} is invalid")
@@ -378,17 +382,17 @@ class LocationFrame(DataFrame):
         button_display.pack(fill="x", padx=10, pady=5)
 
         # Button to add stock
-        add_button = ttk.Button(button_display, text="Add Location", command=self.add_data)
+        add_button = ttk.Button(button_display, text="Add Location", command=self.add_item)
         add_button.pack(side="left", padx=5)
         # Button to edit stock
-        edit_button = ttk.Button(button_display, text="Edit Location", command=self.edit_data)
+        edit_button = ttk.Button(button_display, text="Edit Location", command=self.edit_item)
         edit_button.pack(side="left", padx=5)
         # Button to delete stock
-        delete_button = ttk.Button(button_display, text="Delete Location", command=self.delete_data)
+        delete_button = ttk.Button(button_display, text="Delete Location", command=self.delete_item)
         delete_button.pack(side="left", padx=5)
 
     def add_item(self):
-        new_window = LocationPopup()
+        new_window = LocationPopup(self, self._controller)
 
         self.wait_window(new_window)
 
@@ -407,10 +411,10 @@ class LocationFrame(DataFrame):
         except:
             messagebox.showerror(title="Fetch failed", message="Failed to fetch item from database")
 
-        location_query._name = item_data["name"]
+        location_query._name = item_data[0]["name"]
 
         # Open a window to edit the existing data
-        new_window = LocationPopup(location_query)
+        new_window = LocationPopup(self, self._controller, location_query)
 
         # Freeze the main window while the edit window is open
         self.wait_window(new_window)
@@ -440,7 +444,7 @@ class LocationFrame(DataFrame):
         # Check that the inputted data is valid
         self.valid_params()
         if not self._validity_log.success:
-            messagebox.showerror(title="Invalid Parameters", message=self._validity_log._msg)
+            messagebox.showerror(title="Invalid Parameters", message=self._validity_log.msg)
             return
 
         # Construct an InventoryData object
@@ -471,11 +475,11 @@ class LocationFrame(DataFrame):
         """
         Checks the search params to make sure they are valid
         """
-        valid.normalise_params(self._search_params)
+        valid.normalise_stringvar_params(self._search_params)
 
         self._validity_log.reset()
 
-        stock_name = self._search_params["name"]
+        stock_name = self._search_params["name"].get()
 
         if not valid.is_valid_name(stock_name):
             self._validity_log.error(f"Stock name {stock_name} is invalid")
@@ -517,12 +521,12 @@ class StockFrame(DataFrame):
         self._show_restock = tk.BooleanVar()
 
         restock_checkbox = ttk.Checkbutton(
-            master,
+            search_bars,
             text='Need restock',
             command=self.load_data,
             variable=self._show_restock,
         )
-        restock_checkbox.grid(row=1, column=0. padx=5, pady=2)
+        restock_checkbox.grid(row=1, column=0, padx=5, pady=2)
 
         # Buttons to submit search query
         search_button = ttk.Button(search_bars, text="Search", command=self.load_data)
@@ -578,13 +582,13 @@ class StockFrame(DataFrame):
         button_display.pack(fill="x", padx=10, pady=5)
 
         # Button to add stock type
-        add_button = ttk.Button(button_display, text="Add Stock Type", command=self.add_data)
+        add_button = ttk.Button(button_display, text="Add Stock Type", command=self.add_item)
         add_button.pack(side="left", padx=5)
         # Button to edit stock type
-        edit_button = ttk.Button(button_display, text="Edit Stock Type", command=self.edit_data)
+        edit_button = ttk.Button(button_display, text="Edit Stock Type", command=self.edit_item)
         edit_button.pack(side="left", padx=5)
         # Button to delete stock type
-        delete_button = ttk.Button(button_display, text="Delete Stock Type", command=self.delete_data)
+        delete_button = ttk.Button(button_display, text="Delete Stock Type", command=self.delete_item)
         delete_button.pack(side="left", padx=5)
 
     def add_item(self):
@@ -607,8 +611,8 @@ class StockFrame(DataFrame):
         except:
             messagebox.showerror(title="Fetch failed", message="Failed to fetch item from database")
 
-        stock_query._name = item_data["name"]
-        stock_query._restock_quantity = item_data["restock_quantity"]
+        stock_query._name = item_data[0]["name"]
+        stock_query._restock_quantity = item_data[0]["restock_quantity"]
 
         # Open a window to edit the existing data
         new_window = StockPopup(self, self._controller, stock_query)
@@ -641,7 +645,7 @@ class StockFrame(DataFrame):
         # Check that the inputted data is valid
         self.valid_params()
         if not self._validity_log.success:
-            messagebox.showerror(title="Invalid Parameters", message=self._validity_log._msg)
+            messagebox.showerror(title="Invalid Parameters", message=self._validity_log.msg)
             return
 
         # Construct a StockData object
@@ -656,7 +660,7 @@ class StockFrame(DataFrame):
             # If the option to only show items that need restocking is on, get the list of items that need restocking, and create a sub-list containing only those values that intersect
             if self._show_restock.get():
                 need_restock_dict = self._controller._database.check_restock()
-                need_restock_name_set = {stock["id"] for stock in need_restock}
+                need_restock_name_set = {stock["id"] for stock in need_restock_dict}
                 results = [r for r in results if r["id"] in need_restock_name_set]
         except Exception as e:
             messagebox.showerror(title="Fetch failed", message="Failed to fetch from database")
@@ -678,11 +682,11 @@ class StockFrame(DataFrame):
         """
         Checks the search params to make sure they are valid
         """
-        valid.normalise_params(self._search_params)
+        valid.normalise_stringvar_params(self._search_params)
 
         self._validity_log.reset()
 
-        stock_name = self._search_params["name"]
+        stock_name = self._search_params["name"].get()
         
         if not valid.is_valid_name(stock_name):
             self._validity_log.error(f"Stock name {stock_name} is invalid")
@@ -729,12 +733,12 @@ class QuantityFrame(DataFrame):
         self._show_restock = tk.BooleanVar()
 
         restock_checkbox = ttk.Checkbutton(
-            master,
+            search_bars,
             text='Need restock',
             command=self.load_data,
             variable=self._show_restock,
         )
-        restock_checkbox.grid(row=2, column=0. padx=5, pady=2)
+        restock_checkbox.grid(row=2, column=0, padx=5, pady=2)
 
         # Buttons to submit search query
         search_button = ttk.Button(search_bars, text="Search", command=self.load_data)
@@ -793,7 +797,7 @@ class QuantityFrame(DataFrame):
         # Check that the inputted data is valid
         self.valid_params()
         if not self._validity_log.success:
-            messagebox.showerror(title="Invalid Parameters", message=self._validity_log._msg)
+            messagebox.showerror(title="Invalid Parameters", message=self._validity_log.msg)
             return
 
         # Construct a QuantityData object
@@ -808,7 +812,7 @@ class QuantityFrame(DataFrame):
             # If the option to only show items that need restocking is on, get the list of items that need restocking, and create a sub-list containing only those values that intersect
             if not self._show_restock.get():
                 need_restock_dict = self._controller._database.check_restock()
-                need_restock_name_set = {stock["id"] for stock in need_restock}
+                need_restock_name_set = {stock["id"] for stock in need_restock_dict}
                 results = [r for r in results if r["id"] in need_restock_name_set]
         except Exception as e:
             messagebox.showerror(title="Fetch failed", message="Failed to fetch from database")
@@ -830,18 +834,18 @@ class QuantityFrame(DataFrame):
         """
         Checks the search params to make sure they are valid
         """
-        valid.normalise_params(self._search_params)
+        valid.normalise_stringvar_params(self._search_params)
 
         self._validity_log.reset()
 
-        name = self._search_params["name"]
-        location=self._search_params["location"]
+        name = self._search_params["name"].get()
+        location=self._search_params["location"].get()
         
         if not valid.is_valid_name(name):
             self._validity_log.error(f"Stock name {name} is invalid")
 
         if not valid.is_valid_name(location):
-            self._validity_log.error(f"Location name {location} is invalid"
+            self._validity_log.error(f"Location name {location} is invalid")
         
 
 class LogFrame(DataFrame):
@@ -935,7 +939,7 @@ class LogFrame(DataFrame):
         # Check that the inputted data is valid
         self.valid_params()
         if not self._validity_log.success:
-            messagebox.showerror(title="Invalid Parameters", message=self._validity_log._msg)
+            messagebox.showerror(title="Invalid Parameters", message=self._validity_log.msg)
             return
 
         # Construct a StockData object
@@ -970,11 +974,11 @@ class LogFrame(DataFrame):
         """
         Checks the search params to make sure they are valid
         """
-        valid.normalise_params(self._search_params)
+        valid.normalise_stringvar_params(self._search_params)
 
         self._validity_log.success = True
 
-        stock_name = self._search_params["name"]
+        stock_name = self._search_params["name"].get()
         
         if not valid.is_valid_name(stock_name):
             self._validity_log.error(f"Stock name {stock_name} is invalid")
@@ -1003,16 +1007,9 @@ class Popup(tk.Toplevel, ABC):
         pass
 
     @abstractmethod
-    def edit_or_create(self, database_method: method):
+    def edit_or_create(self, database_method):
         """
         Constructs the relevant data object using inputted and existing information, then sends it to Database.update_data
-        """
-        pass
-
-    @abstractmethod
-    def create(self):
-        """
-        Constructs the relevant data object using inputted information, then sends it to Database.add_data
         """
         pass
 
@@ -1060,9 +1057,9 @@ class InventoryPopup(Popup):
         name_label = tk.Label(entry_frame, text="Name:")
         name_label.grid(row=0, column=0, sticky="e", padx=10, pady=5)
 
-        self._name = tk.StringVar()
+        self._name_var = tk.StringVar()
 
-        name_entry = ttk.Entry(entry_frame, textvariable=self._name, width=30)
+        name_entry = ttk.Entry(entry_frame, textvariable=self._name_var, width=30)
 
         # If we are editing, we should not be able to edit the type of stock
         if self._inventory_data:
@@ -1118,7 +1115,7 @@ class InventoryPopup(Popup):
         if self._inventory_data:
             submit_btn = ttk.Button(btn_frame, text="Edit", command=lambda: self.edit_or_create(self._controller._database.update_data))
         else:
-            submit_btn = ttk.Button(btn_frame, text="Create", command=lambda: self.edit_or_create(self._controller._database.create_data))
+            submit_btn = ttk.Button(btn_frame, text="Create", command=lambda: self.edit_or_create(self._controller._database.add_data))
         
         submit_btn.pack(side="left", padx=5)
 
@@ -1128,31 +1125,32 @@ class InventoryPopup(Popup):
     def populate_fields(self):
         """
         If data was passed to this topwindow on creation, populate the entry fields with the relevant data
-        ""
+        """
         # Check just in case this function is accidentally called from the wrong place
-        if not inventory_data:
+        if not self._inventory_data:
             return None
         name = self._inventory_data._stock_type._name
         location = self._inventory_data._location._name
         quantity = self._inventory_data._quantity
 
-        self._name.set(name)
+        self._name_var.set(name)
         self._location.set(location)
-        self._new_location(location)
-        self._current_quantity(quantity)
-        self._new_quantity(quantity)
+        self._new_location.set(location)
+        self._current_quantity.set(quantity)
+        self._new_quantity.set(quantity)
 
-    def edit_or_create(self, database_method: method):
+    def edit_or_create(self, database_method):
         """
         Uses given data to edit or create an existing database entry depending on the window's function
         """
-        name = self._name.get()
+        name = self._name_var.get()
+
         if self._inventory_data:
             location = self._new_location.get()
             quantity = self._new_quantity.get()
         else:
             location = self._location.get()
-            quantity = self._quantity.get()
+            quantity = self._current_quantity.get()
 
         self._query._stock_type._name = name
         self._query._location._name = location
@@ -1161,7 +1159,7 @@ class InventoryPopup(Popup):
         self.valid_params()
         
         if not self._validity_log.success:
-            messagebox.showerror(title="Invalid Parameters", message=self._validity_log._msg)
+            messagebox.showerror(title="Invalid Parameters", message=self._validity_log.msg)
             return
 
         try:
@@ -1174,11 +1172,15 @@ class InventoryPopup(Popup):
         Checks to make sure all parameters are valid, and logs all invalid parameters
         """
         self._validity_log.reset()
-        
-        valid.normalise_params({"name": self._query._stock_type._name, "location": self._query._location._name, "current_quantity": self._query._quantity})
-        name = self._query._stock_type._name.get()
-        location = self._query._location._name.get()
-        current_quantity = self._query._quantity.get()
+        normalised_params = valid.normalise_params({"name": self._query._stock_type._name, "location": self._query._location._name, "current_quantity": self._query._quantity})
+
+        name = normalised_params["name"]
+        location = normalised_params["location"]
+        current_quantity = normalised_params["current_quantity"]
+
+        self._query._stock_type._name = name
+        self._query._location._name = location
+        self._query._quantity = current_quantity
 
         # Check that all values are formatted correctly
         if not valid.is_valid_name(name):
@@ -1240,14 +1242,14 @@ class LocationPopup(Popup):
         name_label = tk.Label(entry_frame, text="Name:")
         name_label.grid(row=0, column=0, sticky="e", padx=10, pady=5)
 
-        self._name = tk.StringVar()
+        self._name_var = tk.StringVar()
 
-        name_entry = ttk.Entry(entry_frame, textvariable=self._name, width=30)
+        name_entry = ttk.Entry(entry_frame, textvariable=self._name_var, width=30)
         
         name_entry.grid(row=0, column=1, padx=10, pady=5)
 
         if self._location_data:
-            name_entry.config(stat="disabled")
+            name_entry.config(state="disabled")
             self._new_name = tk.StringVar()
 
             new_name_label = tk.Label(entry_frame, text="New Name:")
@@ -1260,10 +1262,10 @@ class LocationPopup(Popup):
         btn_frame.pack(fill="x", expand=True, padx=10, pady=10)
 
         # Create buttons with different labels depending on if data has been given
-        if self._inventory_data:
+        if self._location_data:
             submit_btn = ttk.Button(btn_frame, text="Edit", command=lambda: self.edit_or_create(self._controller._database.update_data))
         else:
-            submit_btn = ttk.Button(btn_frame, text="Create", command=lambda: self.edit_or_create(self._controller._database.create_data))
+            submit_btn = ttk.Button(btn_frame, text="Create", command=lambda: self.edit_or_create(self._controller._database.add_data))
         
         submit_btn.pack(side="left", padx=5)
 
@@ -1273,32 +1275,32 @@ class LocationPopup(Popup):
     def populate_fields(self):
         """
         If data was passed to this topwindow on creation, populate the entry fields with the relevant data
-        ""
+        """
         # Check just in case this function is accidentally called from the wrong place
-        if not location_data:
+        if not self._location_data:
             return None
         name = self._location_data._name
 
-        self._name.set(name)
+        self._name_var.set(name)
         self._new_name.set(name)
 
-    def edit_or_create(self, database_method: method):
+    def edit_or_create(self, database_method):
         """
         Uses given data to edit or create an existing database entry depending on the window's function
         """
         if self._location_data:
             name = self._new_name.get()
         else:
-            name = self._name.get()
+            name = self._name_var.get()
 
         self._query._name = name
         
         self.valid_params()
         
         if not self._validity_log.success:
-            messagebox.showerror(title="Invalid Parameters", message=self._validity_log._msg)
+            messagebox.showerror(title="Invalid Parameters", message=self._validity_log.msg)
             return
-
+        
         try:
             database_method(self._query)
         except:
@@ -1310,18 +1312,14 @@ class LocationPopup(Popup):
         """
         self._validity_log.reset()
         
-        valid.normalise_params({"name": self._query._name})
-        name = self._query._name.get()
+        normalised_params = valid.normalise_params({"name": self._query._name})
+        name = normalised_params["name"]
+
+        self._query._name = name
 
         # Check that all values are formatted correctly
         if not valid.is_valid_name(name):
             self._validity_log.error(f"Location name {name} is invalid")
-
-        # Check that the name of the stock type is in the database
-        name_exists = self._controller._database.fetch_data(ds.StockData(name=name))
-
-        if len(name_exists) == 0:
-            self._validity_log.error("Location name not found in database")
 
 
 class StockPopup(Popup):
@@ -1361,14 +1359,14 @@ class StockPopup(Popup):
         name_label = tk.Label(entry_frame, text="Name:")
         name_label.grid(row=0, column=0, sticky="e", padx=10, pady=5)
 
-        self._name = tk.StringVar()
+        self._name_var = tk.StringVar()
 
-        name_entry = ttk.Entry(entry_frame, textvariable=self._name, width=30)
+        name_entry = ttk.Entry(entry_frame, textvariable=self._name_var, width=30)
         
         name_entry.grid(row=0, column=1, padx=10, pady=5)
 
         if self._stock_data:
-            name_entry.config(stat="disabled")
+            name_entry.config(state="disabled")
             self._new_name = tk.StringVar()
 
             new_name_label = tk.Label(entry_frame, text="New Name:")
@@ -1378,16 +1376,16 @@ class StockPopup(Popup):
             new_name_entry.grid(row=2, column=1, padx=10, pady=5)
 
         restock_label = tk.Label(entry_frame, text="Restock level:")
-        restock_label.grid(row=0, column=0, sticky="e", padx=10, pady=5)
+        restock_label.grid(row=3, column=0, sticky="e", padx=10, pady=5)
 
         self._restock_quantity = tk.StringVar()
 
         restock_entry = ttk.Entry(entry_frame, textvariable=self._restock_quantity, width=30)
         
-        restock_entry.grid(row=0, column=1, padx=10, pady=5)
+        restock_entry.grid(row=3, column=1, padx=10, pady=5)
 
         if self._stock_data:
-            restock_entry.config(stat="disabled")
+            restock_entry.config(state="disabled")
             self._new_restock = tk.StringVar()
 
             new_restock_label = tk.Label(entry_frame, text="New restock level:")
@@ -1400,10 +1398,10 @@ class StockPopup(Popup):
         btn_frame.pack(fill="x", expand=True, padx=10, pady=10)
 
         # Create buttons with different labels depending on if data has been given
-        if self._inventory_data:
+        if self._stock_data:
             submit_btn = ttk.Button(btn_frame, text="Edit", command=lambda: self.edit_or_create(self._controller._database.update_data))
         else:
-            submit_btn = ttk.Button(btn_frame, text="Create", command=lambda: self.edit_or_create(self._controller._database.create_data))
+            submit_btn = ttk.Button(btn_frame, text="Create", command=lambda: self.edit_or_create(self._controller._database.add_data))
         
         submit_btn.pack(side="left", padx=5)
 
@@ -1413,19 +1411,19 @@ class StockPopup(Popup):
     def populate_fields(self):
         """
         If data was passed to this topwindow on creation, populate the entry fields with the relevant data
-        ""
+        """
         # Check just in case this function is accidentally called from the wrong place
-        if not stock_data:
+        if not self._stock_data:
             return None
         name = self._stock_data._name
         restock_quantity = self._stock_data._restock_quantity
 
-        self._name.set(name)
+        self._name_var.set(name)
         self._new_name.set(name)
         self._restock_quantity.set(restock_quantity)
         self._new_restock.set(restock_quantity)
 
-    def edit_or_create(self, database_method: method):
+    def edit_or_create(self, database_method):
         """
         Uses given data to edit or create an existing database entry depending on the window's function
         """
@@ -1433,7 +1431,7 @@ class StockPopup(Popup):
             name = self._new_name.get()
             restock_quantity = self._new_restock.get()
         else:
-            name = self._name.get()
+            name = self._name_var.get()
             restock_quantity = self._restock_quantity.get()
 
         self._query._name = name
@@ -1442,7 +1440,7 @@ class StockPopup(Popup):
         self.valid_params()
         
         if not self._validity_log.success:
-            messagebox.showerror(title="Invalid Parameters", message=self._validity_log._msg)
+            messagebox.showerror(title="Invalid Parameters", message=self._validity_log.msg)
             return
 
         try:
@@ -1456,9 +1454,12 @@ class StockPopup(Popup):
         """
         self._validity_log.reset()
         
-        valid.normalise_params({"name": self._query._name, "restock_quantity": self._query._restock_quantity})
-        name = self._query._name.get()
-        restock_quantity = self._query._restock_quantity.get()
+        normalised_params = valid.normalise_params({"name": self._query._name, "restock_quantity": self._query._restock_quantity})
+        name = normalised_params["name"]
+        restock_quantity = normalised_params["restock_quantity"]
+
+        self._query._name = name
+        self._query._restock_quantity = restock_quantity
 
         # Check that all values are formatted correctly
         if not valid.is_valid_name(name):
@@ -1466,9 +1467,3 @@ class StockPopup(Popup):
 
         if not valid.is_valid_num(restock_quantity):
             self._validity_log.error(f"Restock quantity {restock_quantity} is invalid")
-
-        # Check that the name of the stock type is in the database
-        name_exists = self._controller._database.fetch_data(ds.StockData(name=name))
-
-        if len(name_exists) == 0:
-            self._validity_log.error("Stock name not found in database")

@@ -23,13 +23,13 @@ class ValidityCheck:
         self.success = True
         self.msg = ""
 
-def is_valid_name(name: tk.StringVar)->bool:
+def is_valid_name(name: str)->bool:
     """
     Checks to see if the name is valid
     Names shouldn't include non-alphanumeric characters except for whitespace
     TODO: this will switch to using regexes to ensure that the name follows a logical format
     """
-    return all(c.isalnum() or c.isspace() for c in name.get())
+    return all(c.isalnum() or c.isspace() for c in name)
 
 def in_database(db: str, param: str, param_name: str, cur) -> bool:
     # Check to see if the name is already in the database
@@ -46,9 +46,18 @@ def is_valid_num(num: str) -> bool:
 ## Normalisation ##
 ###################
 # Functions to normalise input before they are added to the table
-def normalise_params(params: dict[str, tk.StringVar]):
+def normalise_stringvar_params(params: dict[str, tk.StringVar]):
     """
-    Normalises the search params by making them upper case and removing superfluous whitespace
+    Normalises tk.StringVar search params by making them upper case and removing superfluous whitespace
     """
     for key in params:
         params[key].set(params[key].get().strip().upper())
+
+def normalise_params(params: dict[str, str]):
+    """
+    Normalises str search params by making them upper case and removing superfluous whitespace
+    """
+    for key in params:
+        params[key] = params[key].strip().upper()
+    
+    return params

@@ -1,6 +1,7 @@
 from database import Database
 from data_structures import InventoryData
 
+
 def reset_table():
     db = Database()
     db.reset_tables()
