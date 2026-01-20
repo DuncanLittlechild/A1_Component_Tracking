@@ -1,9 +1,7 @@
 import sqlite3 as sql
 from contextlib import contextmanager
 import data_structures as ds
-
 from tkinter import messagebox
-
 
 from platformdirs import user_data_dir
 import sqlite3 as sql
@@ -19,17 +17,17 @@ class Database:
     _delete_log_string = 'Removed'
     _update_log_string = 'Updated'
 
-    def __init__(self):
+    def __init__(self, test_data = False):
+        if test_data:
+            data_dir = Path("./features/test_data")
+        else:
         # Gets the user data directory, creates a directory to hold the database and gets a path to where the databse should be created 
-        data_dir = Path(user_data_dir("A1_component_tracking"))
+            data_dir = Path(user_data_dir("A1_component_tracking"))
         data_dir.mkdir(parents=True, exist_ok=True)
         db_path = data_dir / "stock_database.db"
         self._db_path = db_path
         self.initialise_db()
 
-    #########################
-    ## def initialiseDb () ##
-    #########################
     def initialise_db(self):
         """
         Runs the sql script found at ./dbs/db_sqlite_code.sql
@@ -75,8 +73,6 @@ class Database:
 
         return restock_list
 
-
-
     ######################
     ## Add Data Methods ##
     ######################
@@ -97,11 +93,9 @@ class Database:
         """
         Adds new stock types to stock_data
         """
-        print("In add stock")
         if not data._name or not data._restock_quantity:
             self.missing_data_popup()
             return
-        print("All Data Present")
         with self.get_database_connection() as conn:
             cur = conn.execute("INSERT INTO stock_data (name, restock_quantity) VALUES (?,?)", (data._name, data._restock_quantity))
 
@@ -190,7 +184,6 @@ class Database:
 
         conn.execute(query, tuple(params))
             
-
     ########################
     ## Fetch Data Methods ##
     ########################
@@ -232,7 +225,6 @@ class Database:
             cur = conn.execute(query, tuple(params))
             return [dict(row) for row in cur.fetchall()]
 
-
     def fetch_location_data(self, data: ds.LocationData):
         """
         Dynamically constructs a query to find the necessary data on known locations
@@ -256,7 +248,6 @@ class Database:
         with self.get_database_connection() as conn:
             cur = conn.execute(query, tuple(params))
             return [dict(row) for row in cur.fetchall()]
-
 
     def fetch_inventory_data(self, data: ds.InventoryData):
         """
@@ -327,8 +318,7 @@ class Database:
         with self.get_database_connection() as conn:
             cur = conn.execute(query, params)
             return [dict(row) for row in cur.fetchall()]
-
-        
+      
     def fetch_log_data(self,data: ds.LogData):
         """
         Fetches relevant logs from the activity logs database
@@ -365,8 +355,7 @@ class Database:
         with self.get_database_connection() as conn:
             cur = conn.execute(query, tuple(params))
             return [dict(row) for row in cur.fetchall()]
-        
-    
+     
     #########################
     ## Update Data Methods ##
     #########################
