@@ -1,4 +1,4 @@
-from ui.main_window import App
+from gui import App
 
 app = App()
 app.mainloop()

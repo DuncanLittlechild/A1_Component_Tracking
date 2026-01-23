@@ -11,3 +11,7 @@ Feature: stock_data
             And they need restocking when there are fewer than 20 of them
             When I add them as a stock type
             Then screws that restock at 20 can be found in the database "stock_data"
+        
+        Scenario: Edit item in stock_data database
+
+        Scenario: 
