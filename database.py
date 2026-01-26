@@ -68,7 +68,7 @@ class Database:
         total_quantities = self.fetch_quantity_data(ds.QuantityData())
         restock_list = []
         for row in total_quantities:
-            if row["restock_quantity"] >= row["current_quantity"]:
+            if row["restock_quantity"] >= row["total_quantity"]:
                 restock_list.append(row)
 
         return restock_list
@@ -117,7 +117,7 @@ class Database:
         query = """
             INSERT INTO
                 current_inventory (stock_id, location_id, current_quantity)
-            VALUES ((SELECT id FROM stock_data WHERE name = ?),(SELECT id FROM location_data WHERE name = ?), current_quantity = ?
+            VALUES ((SELECT id FROM stock_data WHERE name = ?),(SELECT id FROM location_data WHERE name = ?), ?)
         """
         stock_name = data._stock_type._name
         location_name = data._location._name
@@ -132,37 +132,49 @@ class Database:
         params = (stock_name, location_name, initial_quantity)
         with self.get_database_connection() as conn:
             cur = conn.execute(query, params)
-            # Create 
-            log_data = ds.LogData(stock_name=stock_name, location_name=location_name, activity_type=self._add_log_string,update_details=None, quantity_change=initial_quantity)
+            # Log the new instance
+            # This gets the id of the newly generated instance by searching for
+            # the instance of stock_name with the highest id. This works
+            # because sqlite autoincrements the id each time.
+            id_str_list = conn.execute("SELECT id FROM current_inventory WHERE stock_id = (SELECT id FROM stock_data WHERE name = ?) ORDER BY id DESC", (stock_name,))
+            log_data = ds.LogData(id_str=id_str_list[0],stock_name=stock_name, location_name=location_name, activity_type=self._add_log_string,update_details=None, quantity_change=initial_quantity)
             self.add_log_data(log_data, conn)
 
     def add_log_data(self, data: ds.LogData, conn: sql.Connection):
         """
         Dynamically adds the relevant data to the activity_logs
+        Note that this must only be called when a database is active
         """
         # Gets the relevant keywords
-        fields_to_insert = "stock_id, location_id, activity_type"
-        # Check to see if an id has been supplied
-        if data._stock_id:
-            stock_param = data._stock_id
-            stock_id_query = "?"
-        else:
-            stock_param = data._stock_name
+        fields_to_insert = "instance_id, stock_id, stock_name, location_id, location_name, activity_type"
+        instance_id_param = data._id_str
+        # If there is no id, retrieve it
+        if not data._stock_id:
+            stock_id_param = data._stock_name
             stock_id_query = "(SELECT id FROM stock_data WHERE name = ?)"
-
-        if data._location_id:
-            location_param = data._location_id
-            location_id_query = "?"
         else:
-            location_param = data._location_name
+            stock_id_param = data._stock_id
+            stock_id_query = "?"
+        
+        stock_name_param = data._stock_name
+        
+        if not data._location_id:
+            location_id_param = data._location_name
             location_id_query = "(SELECT id FROM location_data WHERE name = ?)"
+        else:
+            location_id_param = data._location_id
+            location_id_query = "?"
+
+        location_name_param = data._location_name
 
         values_to_insert = f"""
             {stock_id_query},
+            ?,
             {location_id_query},
+            ?,
             ?
             """
-        params = [stock_param, location_param, data._activity_type]
+        params = [instance_id_param, stock_id_param, stock_name_param, location_id_param, location_name_param, data._activity_type]
 
         if data._update_details:
             fields_to_insert += ", update_details"
@@ -295,10 +307,10 @@ class Database:
                 stock_data.id AS id,
                 stock_data.name AS name,
                 stock_data.restock_quantity as restock_quantity,
-                SUM(current_inventory.current_quantity) AS total_quantity
+                COALESCE(SUM(current_inventory.current_quantity),0) AS total_quantity
             FROM
                 stock_data
-            INNER JOIN current_inventory ON current_inventory.stock_id = stock_data.id
+            LEFT JOIN current_inventory ON current_inventory.stock_id = stock_data.id
             WHERE 1=1
         """
         params = []
@@ -311,13 +323,13 @@ class Database:
             params.append(data._location_name)
 
         query += """
-            GROUP BY stock_data.name
-            ORDER BY stock_data.name
+            GROUP BY stock_data.id, stock_data.name, stock_data.restock_quantity
         """
 
         with self.get_database_connection() as conn:
-            cur = conn.execute(query, params)
-            return [dict(row) for row in cur.fetchall()]
+            cur = conn.execute(query, tuple(params))
+            vals = cur.fetchall()
+            return [dict(row) for row in vals]
       
     def fetch_log_data(self,data: ds.LogData):
         """
@@ -386,14 +398,6 @@ class Database:
             SET id = ?
         """
         params = [data._id_str]
-        # Check to see if a name already exists. If it does, do noat allow this operation
-        if data._name:
-            already_exists = self.fetch_data(ds.StockData(name=data._name))
-            if len(already_exists) > 0:
-                messagebox.showerror(title="Name already exists", message="Another stock type already has that name. Please choose a different one.")
-                return
-            query += ", name = ?"
-            params.append(data._name)
 
         if data._restock_quantity:
             query += ", restock_quantity = ?"
@@ -422,7 +426,8 @@ class Database:
         # Check to see if a name already exists. If it does, do noat allow this operation
         if data._name:
             already_exists = self.fetch_data(ds.LocationData(name=data._name))
-            if len(already_exists) > 0:
+            # Allow the name to be "changed" to the current name
+            if len(already_exists) > 0 and already_exists[0]["name"] != data._name:
                 messagebox.showerror(title="Name already exists", message="Another location already has that name. Please choose a different one.")
                 return None
             query += ", name = ?"
@@ -459,24 +464,19 @@ class Database:
         params.append(data._id_str)
 
         # Set up the logdata object to be altered
-        log_data = ds.LogData(instance_id=data._id_str, stock_id=data._stock_type._id_str, stock_name=data._stock_type._name, location_id=data._location._id_str, location_name=data._location._name, activity_type='Updated')
+        log_data = ds.LogData(instance_id=data._id_str, stock_name=data._stock_type._name, location_name=data._location._name, activity_type='Updated')
 
         with self.get_database_connection() as conn:
             # Get the original values before the query is sent off
             # This is to allow for comprehensive logging
             original_values = self.get_original_values(data, conn)
 
-            if data._location._name:
-                log_data._location_name = data._location._name
-                cur = conn.execute("SELECT id FROM location_data WHERE name = ?", (data._location._name,))
-                location_id = dict(cur.fetchone())["id"]
-
             # Work out what was changed and use to construct an update code
             # Also checks to make sure a change has been made
             # This helps to detect if a query was submitted where no values had been changed
-            if location_id != original_values["id"] and data._quantity != original_values["current_quantity"]:
+            if data._location._name != original_values["name"] and data._quantity != original_values["current_quantity"]:
                 log_data._update_details = "Both"
-            elif location_id != original_values["id"]:
+            elif data._location._name != original_values["name"]:
                 log_data._update_details = "Location"
             elif data._quantity != original_values["current_quantity"]:
                 log_data._update_details = "Quantity"
@@ -485,17 +485,13 @@ class Database:
                 return None
 
             # Execute the main query
-            cur.execute(query, tuple(params))
+            cur = conn.execute(query, tuple(params))
 
             # If there was a quantity change, get the quantity change
             if data._quantity:
                 log_data._quantity_change = int(original_values["current_quantity"]) - int(data._quantity)
 
-            # if there is no stock_name, get the stock_name
-            if not data._stock_type._name:
-                log_data._stock_id = original_values["stock_id"]
-            else:
-                log_data._stock_name = data._stock_type._name
+            log_data._stock_name = data._stock_type._name
 
             # create the log
             self.add_log_data(log_data, conn)

@@ -1,4 +1,5 @@
 import tkinter as tk
+import copy
 from tkinter import ttk
 from tkinter import messagebox
 import data_structures as ds
@@ -1140,8 +1141,6 @@ class InventoryPopup(Popup):
         self.transient(parent)
         self.grab_set()
 
-        self._query = ds.InventoryData()
-
         self.create_widgets()
 
         if inventory_data:
@@ -1237,22 +1236,21 @@ class InventoryPopup(Popup):
         self._current_quantity.set(quantity)
         self._new_quantity.set(quantity)
 
+
     def edit_or_create(self, database_method):
         """
         Uses given data to edit or create an existing database entry depending on the window's function
         """
-        name = self._name_var.get()
-
         if self._inventory_data:
-            location = self._new_location.get()
-            quantity = self._new_quantity.get()
+            self._query = copy.deepcopy(self._inventory_data)
+            self._query._location._name = self._new_location.get()
+            self._query._quantity = self._new_quantity.get()
         else:
-            location = self._location.get()
-            quantity = self._current_quantity.get()
+            self._query = ds.InventoryData()
+            self._query._location._name = self._location.get()
+            self._query._quantity = self._current_quantity.get()
 
-        self._query._stock_type._name = name
-        self._query._location._name = location
-        self._query._quantity = quantity
+        self._query._stock_type._name = self._name_var.get()
         
         self.valid_params()
         
@@ -1265,6 +1263,7 @@ class InventoryPopup(Popup):
         except:
             messagebox.showerror(title="Database Error", message="Unable to update database")
     
+
     def valid_params(self):
         """
         Checks to make sure all parameters are valid, and logs all invalid parameters
@@ -1324,8 +1323,6 @@ class LocationPopup(Popup):
         self.geometry("400x250")
         self.transient(parent)
         self.grab_set()
-
-        self._query = ds.LocationData()
 
         self.create_widgets()
 
@@ -1387,11 +1384,11 @@ class LocationPopup(Popup):
         Uses given data to edit or create an existing database entry depending on the window's function
         """
         if self._location_data:
-            name = self._new_name.get()
+            self._query = copy.deepcopy(self._location_data)
+            self._query._name = self._new_name.get()
         else:
-            name = self._name_var.get()
-
-        self._query._name = name
+            self._query = ds.LocationData()
+            self._query._name = self._name_var.get()
         
         self.valid_params()
         
@@ -1441,8 +1438,6 @@ class StockPopup(Popup):
         self.geometry("400x250")
         self.transient(parent)
         self.grab_set()
-
-        self._query = ds.StockData()
 
         self.create_widgets()
 
@@ -1526,14 +1521,13 @@ class StockPopup(Popup):
         Uses given data to edit or create an existing database entry depending on the window's function
         """
         if self._stock_data:
-            name = self._new_name.get()
-            restock_quantity = self._new_restock.get()
+            self._query = copy.deepcopy(self._stock_data)
+            self._query._name = self._new_name.get()
+            self._query._restock_quantity = self._new_restock.get()
         else:
-            name = self._name_var.get()
-            restock_quantity = self._restock_quantity.get()
-
-        self._query._name = name
-        self._query._restock_quantity = restock_quantity
+            self._query = ds.StockData()
+            self._query._name = self._name_var.get()
+            self._query._restock_quantity = self._restock_quantity.get()
         
         self.valid_params()
         

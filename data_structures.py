@@ -52,6 +52,8 @@ class LogData(SqlData):
     Passes data on log query between the ui and the database
     """
     def __init__(self, id_str: str = None, instance_id: str = None, stock_name: str = None, stock_id:str = None, location_name: str = None, location_id: str = None, activity_type: str = None, update_details: str = None, quantity_change: str = None, date_occured:str = datetime.now().strftime("%Y-%m-%d %H:%M%S")):
+        if not stock_name or not location_name:
+            raise Exception("Trying to generate log without stock or location name")
         self._id_str = id_str
         self._instance_id = instance_id
         self._stock_name = stock_name

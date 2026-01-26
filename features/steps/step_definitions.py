@@ -2,6 +2,27 @@ from behave import given, when, then
 from database import Database
 import data_structures as ds
 
+def row_to_dto(row, dto_type):
+    """
+    Converts feature table row to the appropriate dto
+    """
+    dto = dto_type()
+    for field in row:
+        if row[field]:
+            setattr(dto, field, row[field])
+    return dto
+
+# Helpers to standardise step syntax
+def get_stock_data(db: Database, row: dict):
+    pass
+
+def get_location_data(db: Database):
+    pass
+
+def get_current_inventory(db: Database):
+    pass
+
+
 @given("the test database is clear")
 def step_impl(context):
     db = Database(test_data=True)
@@ -11,23 +32,54 @@ def step_impl(context):
 def step_impl(context):
     context.db = Database(test_data=True)
 
-@given("I want to store {stock_type} in my inventory")
-def step_impl(context, stock_type):
-    context.stock_name = stock_type
+@given("I want to add the following item to {db_name}:")
+def step_impl(context, db_name):
+    """
+    Check the database type, generate the requisite dto, and then create one of
+    them per row in the context table.
+    Sets up context.row_list (list of rows from the input table)
+            context.dto_list (list of dtos generated from the input table)
+    """
+    match db_name:
+        case "stock_data":
+            dto_type = ds.StockData
+        case "location_data":
+            dto_type = ds.LocationData
+        case "current_inventory":
+            dto_type = ds.InventoryData
+        case _:
+            raise Exception("invalid database name")
+    
+    row = dict(context.table[0])
 
-@given("they need restocking when there are fewer than {restock_quantity} of them")
-def step_impl(context, restock_quantity):
-    context.restock_quantity = restock_quantity
+    context.row = row
+    context.dto = row_to_dto(row, dto_type)
 
-@when("I add them as a stock type")
-def step_impl(context):
-    stock = ds.StockData(restock_quantity=context.restock_quantity, name=context.stock_name)
-    context.db.add_data(stock)
 
-@then('{stock_type} that restock at {restock_quantity} can be found in the database "stock_data"')
-def step_impl(context, stock_type, restock_quantity):
-    stock_query = ds.StockData(restock_quantity=restock_quantity, name=stock_type)
-    actual_stock = context.db.fetch_data(stock_query)
-    assert len(actual_stock) == 1
-    assert actual_stock[0]["name"] == stock_type
-    assert actual_stock[0]["restock_quantity"] == int(restock_quantity)
+@when("I run {db_method}")
+def step_impl(context, db_method):
+    """
+    Runs the appropriate database method with the data provided
+    """
+    method = getattr(context.db, db_method)
+    if not db_method == "fetch_data":
+        method(context.dto)
+    else:
+        context.fetch_result = (method(context.dto))
+
+
+@then('the following item can be found in {db_name}')
+def step_impl(context, db_name):
+    expected_result = dict(context.table[0])
+    row = context.row
+    db = context.db
+    match db_name:
+        case "stock_data":
+            actual_result = get_stock_data(db, row)
+        case "location_data":
+            actual_result = get_location_data(db, row)
+        case "current_inventory":
+            actual_result = get_current_inventory(db, row)
+
+    assert len(actual_result) == len(expected_result)
+    assert actual_result == expected_result
