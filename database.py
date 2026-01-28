@@ -6,6 +6,7 @@ from tkinter import messagebox
 from platformdirs import user_data_dir
 import sqlite3 as sql
 from pathlib import Path
+from utils import MsgBoxGenerator
 
 _G_CREATE_STR = "add"
 _G_READ_STR = "read"
@@ -94,31 +95,47 @@ class Database:
         Adds new stock types to stock_data
         """
         if not data._name or not data._restock_quantity:
-            self.missing_data_popup()
-            return
+            return self.missing_data_popup()
+        # id may be inserted manually for testing purposes
+        if data._id_str:
+            fields = "(id, name, restock_quantity)"
+            values = "(?,?,?)"
+            params = (data._id_str, data._name, data._restock_quantity)
+        else:
+            fields = "(name, restock_quantity)"
+            values = "(?,?)"
+            params = (data._name, data._restock_quantity)
+
         with self.get_database_connection() as conn:
-            cur = conn.execute("INSERT INTO stock_data (name, restock_quantity) VALUES (?,?)", (data._name, data._restock_quantity))
+            cur = conn.execute(f"INSERT INTO stock_data {fields} VALUES {values}", params)
+        return True
 
     def add_location_data(self, data: ds.LocationData):
         """
         Adds new locations to location_data        
         """
         if not data._name:
-            self.missing_data_popup()
-            return
+            return self.missing_data_popup()
+        
+        # id may be inserted manually for testing purposes
+        if data._id_str:
+            fields = "(id, name)"
+            values = "(?,?,?)"
+            params = (data._id_str, data._name)
+        else:
+            fields = "(name)"
+            values = "(?,?)"
+            params = (data._name,)
 
         with self.get_database_connection() as conn:
-            cur = conn.execute("INSERT INTO location_data (name) VALUES (?)", (data._name,))
+            cur = conn.execute(f"INSERT INTO location_data {fields} VALUES {values}", params)
+        return True
 
     def add_inventory_data(self, data: ds.InventoryData):
         """
         Adds new stock instances to current_inventory
         """
-        query = """
-            INSERT INTO
-                current_inventory (stock_id, location_id, current_quantity)
-            VALUES ((SELECT id FROM stock_data WHERE name = ?),(SELECT id FROM location_data WHERE name = ?), ?)
-        """
+
         stock_name = data._stock_type._name
         location_name = data._location._name
         initial_quantity = data._quantity
@@ -126,10 +143,23 @@ class Database:
         # ensure that all parameters are present
         # If any are missing, then show a warning and return
         if not stock_name or not location_name or not initial_quantity:
-            self.missing_data_popup()
-            return
+            return self.missing_data_popup()
+        
+        # id may be inserted manually for testing purposes
+        if data._id_str:
+            fields = "(id, stock_id, location_id, current_quantity)"
+            values = "(?,(SELECT id FROM stock_data WHERE name = ?),(SELECT id FROM location_data WHERE name = ?), ?)"
+            params = (data._id_str, stock_name, location_name, initial_quantity)
+        else:
+            fields = "(stock_id, location_id, current_quantity)"
+            values = "((SELECT id FROM stock_data WHERE name = ?),(SELECT id FROM location_data WHERE name = ?), ?)"
+            params = (stock_name, location_name, initial_quantity)
 
-        params = (stock_name, location_name, initial_quantity)
+        query = f"""
+            INSERT INTO
+                current_inventory {fields}
+            VALUES {values}
+        """
         with self.get_database_connection() as conn:
             cur = conn.execute(query, params)
             # Log the new instance
@@ -139,6 +169,8 @@ class Database:
             id_str_list = conn.execute("SELECT id FROM current_inventory WHERE stock_id = (SELECT id FROM stock_data WHERE name = ?) ORDER BY id DESC", (stock_name,))
             log_data = ds.LogData(id_str=id_str_list[0],stock_name=stock_name, location_name=location_name, activity_type=self._add_log_string,update_details=None, quantity_change=initial_quantity)
             self.add_log_data(log_data, conn)
+
+        return True
 
     def add_log_data(self, data: ds.LogData, conn: sql.Connection):
         """
@@ -389,9 +421,8 @@ class Database:
         Updates the name, base quantity, or restock quantity of a specific location
         Prevents stock being given duplicate names
         """
-        if not data._name or not data._restock_quantity:
-            self.missing_data_popup()
-            return
+        if not data._name and not data._restock_quantity:
+            return self.missing_data_popup()
 
         query = """
             UPDATE stock_data
@@ -409,14 +440,15 @@ class Database:
         with self.get_database_connection() as conn:
             cur = conn.execute(query, tuple(params))
 
+        return True
+
     def update_location_data(self, data: ds.LocationData):
         """
         Updates the name of a specific location
         Prevents locations from being given duplicate names
         """
         if not data._name:
-            self.missing_data_popup()
-            return None
+            return self.missing_data_popup()
         
         query = """
             UPDATE stock_data
@@ -428,8 +460,7 @@ class Database:
             already_exists = self.fetch_data(ds.LocationData(name=data._name))
             # Allow the name to be "changed" to the current name
             if len(already_exists) > 0 and already_exists[0]["name"] != data._name:
-                messagebox.showerror(title="Name already exists", message="Another location already has that name. Please choose a different one.")
-                return None
+                return MsgBoxGenerator(title="Name already exists", message="Another location already has that name. Please choose a different one.")
             query += ", name = ?"
             params.append(data._name)
 
@@ -438,6 +469,8 @@ class Database:
 
         with self.get_database_connection() as conn:
             cur = conn.execute(query, tuple(params))
+
+        return True
 
     def update_inventory_data(self, data: ds.InventoryData):
         """
@@ -481,8 +514,7 @@ class Database:
             elif data._quantity != original_values["current_quantity"]:
                 log_data._update_details = "Quantity"
             else:
-                messagebox.showerror(title="No value change", message="Please update either location or quantity")
-                return None
+                return MsgBoxGenerator(title="No value change", message="Please update either location or quantity")
 
             # Execute the main query
             cur = conn.execute(query, tuple(params))
@@ -495,6 +527,8 @@ class Database:
 
             # create the log
             self.add_log_data(log_data, conn)
+
+        return True
 
     #########################
     ## Delete Data Methods ##
@@ -519,11 +553,12 @@ class Database:
         """
         currently_used = self.fetch_data(ds.InventoryData(stock_type=ds.StockData(name=data._name)))
         if len(currently_used) > 0:
-            messagebox.showerror(title="Stock in use", message="This data entry cannot be deleted, as there are stock instances that currently use it")
-            return
+            return MsgBoxGenerator(title="Stock in use", message="This data entry cannot be deleted, as there are stock instances that currently use it")
         
         with self.get_database_connection() as conn:
             cur = conn.execute("DELETE FROM stock_data WHERE id = ?", (data._id_str,))
+
+        return True
 
     def delete_location_data(self, data: ds.LocationData):
         """
@@ -532,11 +567,12 @@ class Database:
         """
         currently_used = self.fetch_data(ds.InventoryData(location=ds.LocationData(name=data._name)))
         if len(currently_used) > 0:
-            messagebox.showerror(title="Stock in use", message="This data entry cannot be deleted, as there are stock instances that currently use it")
-            return
+            return MsgBoxGenerator(title="Stock in use", message="This data entry cannot be deleted, as there are stock instances that currently use it")
         
         with self.get_database_connection() as conn:
             cur = conn.execute("DELETE FROM location_data WHERE id = ?", (data._id_str,))
+        
+        return True
 
     def delete_inventory_data(self, data: ds.InventoryData):
         with self.get_database_connection() as conn:
@@ -547,7 +583,9 @@ class Database:
             log_data = ds.LogData(stock_id=ov["stock_id"], location_id=ov["location_id"], activity_type='Removed')
 
             self.add_log_data(log_data, conn)
-
+        
+        return True
+    
     #############
     ## utils ##
     #############
@@ -562,7 +600,7 @@ class Database:
         """
         Shows an error message if needed fields are not filled in
         """
-        messagebox.showerror(title="All fields required", message="All fields must be filled in to perform this operation")
+        return MsgBoxGenerator(title="All fields required", message="All fields must be filled in to perform this operation")
 
     def reset_tables(self):
         """

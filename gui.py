@@ -1259,7 +1259,14 @@ class InventoryPopup(Popup):
             return
 
         try:
-            database_method(self._query)
+            result = database_method(self._query)
+            # If the database method fails, result will be a MsgBoxGenerator, and if it succeeds, it will be True
+            if result is True:
+                operation_str = "Edit" if self._inventory_data else "Add"
+                messagebox.showinfo(title=f"{operation_str} succeeded", message="Instance successfully added.")
+                self.destroy()
+            else:
+                messagebox.showerror(title=result.title, message=result.message)
         except:
             messagebox.showerror(title="Database Error", message="Unable to update database")
     
@@ -1397,7 +1404,14 @@ class LocationPopup(Popup):
             return
         
         try:
-            database_method(self._query)
+            result = database_method(self._query)
+            # If the database method fails, result will be a MsgBoxGenerator, and if it succeeds, it will be True
+            if result is True:
+                operation_str = "Edit" if self._location_data else "Add"
+                messagebox.showinfo(title=f"{operation_str} succeeded", message="Location successfully added.")
+                self.destroy()
+            else:
+                messagebox.showerror(title=result.title, message=result.message)
         except:
             messagebox.showerror(title="Database Error", message="Unable to update database")
     
@@ -1536,7 +1550,14 @@ class StockPopup(Popup):
             return
 
         try:
-            database_method(self._query)
+            result = database_method(self._query)
+            # If the database method fails, result will be a MsgBoxGenerator, and if it succeeds, it will be True
+            if result is True:
+                operation_str = "Edit" if self._stock_data else "Add"
+                messagebox.showinfo(title=f"{operation_str} succeeded", message="Stock successfully added.")
+                self.destroy()
+            else:
+                messagebox.showerror(title=result.title, message=result.message)
         except:
             messagebox.showerror(title="Database Error", message="Unable to update database")
     

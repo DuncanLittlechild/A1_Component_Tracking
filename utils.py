@@ -10,6 +10,7 @@ class ValidityCheck:
     def __init__(self, data=[]):
         self.success = True
         self.msg = ""
+        self.header = ""
         self.data = data
 
     def error(self, msg: str):
@@ -22,6 +23,14 @@ class ValidityCheck:
     def reset(self):
         self.success = True
         self.msg = ""
+
+class MsgBoxGenerator:
+    """
+    Returned when database functions error for the purpose of displaying a messagebox
+    """
+    def __init__(self, title, message):
+        self.title = title
+        self.message = message
 
 def is_valid_name(name: str)->bool:
     """
