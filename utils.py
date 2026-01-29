@@ -36,7 +36,6 @@ def is_valid_name(name: str)->bool:
     """
     Checks to see if the name is valid
     Names shouldn't include non-alphanumeric characters except for whitespace
-    TODO: this will switch to using regexes to ensure that the name follows a logical format
     """
     return all(c.isalnum() or c.isspace() for c in name)
 

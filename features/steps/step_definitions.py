@@ -7,15 +7,25 @@ def dict_to_dto(row, dto_type):
     Converts feature table row to the appropriate dto
     """
     dto = dto_type()
-    for field in row:
-        if row[field]:
-            setattr(dto, f"_{field}", row[field])
+    if dto_type == ds.InventoryData:
+        if "id" in row:
+            dto._id = row["id"]
+        if "stock_name" in row:
+            dto._stock_type._name = row["stock_name"]
+        if "location_name" in row:
+            dto._location._name = row["location_name"]
+        if "quantity" in row:
+            dto._quantity = row["quantity"]
+    else:
+        for field in row:
+            if row[field]:
+                setattr(dto, f"_{field}", row[field])
     return dto
 
 def row_to_dict(row):
-    return {row.headings[i]: (int(row.cells[i]) if row.cells[i].isdigit() else row.cells[i]) for i in range(len(row.headings))}
+    return {(row.headings[i] if row.headings[i] != "#" else "id"): (int(row.cells[i]) if row.cells[i].isdigit() else row.cells[i]) for i in range(len(row.headings))}
 
-def db_name_to_dto(db_name: str):
+def db_name_to_dto_type(db_name: str):
     match db_name:
         case "stock_data":
             return ds.StockData
@@ -23,12 +33,15 @@ def db_name_to_dto(db_name: str):
             return ds.LocationData
         case "current_inventory":
             return ds.InventoryData
-        case "log_data":
+        case "activity_log":
             return ds.LogData
         case "stock_quantity":
             return ds.QuantityData
         case _:
             raise Exception("invalid database name")
+        
+def table_to_dict_list(table):
+    return [row_to_dict(row) for row in table]
 
 
 @given("the test database is clear")
@@ -40,36 +53,88 @@ def step_impl(context):
 def step_impl(context):
     context.db = Database(test_data=True)
 
-@given("the following items exist in {db_name}:")
+@given("the target database is {db_name}")
 def step_impl(context, db_name):
+    context.db_name = db_name
+
+@given("the following entries exist in {db_name}:")
+def step_impl(context, db_name):
+    context.db_name = db_name
     for r in context.table:
         row = row_to_dict(r)
-        dto_type = db_name_to_dto(db_name)
+        dto_type = db_name_to_dto_type(db_name)
         dto = dict_to_dto(row, dto_type)
 
         try:
             context.db.add_data(dto)
-        except Exception as e:
-            raise e
+        except:
+            assert False
 
-@given("I want to update the {db_field} to {new_value}")
-def step_impl(context, db_field, new_value):
+@given("{db_name} is empty")
+def step_impl(context, db_name):
+    dto = db_name_to_dto_type(db_name)()
+    try:
+        result = context.db.fetch_data(dto)
+        assert len(result) == 0
+    except:
+        assert False
+
+@given("I want to set the {db_field} of entry #{id} to {new_value}")
+def step_impl(context,id, db_field, new_value):
+    context.dto = db_name_to_dto_type(context.db_name)()
+    setattr(context.dto, "_id", id)
     setattr(context.dto, f"_{db_field}", new_value)
 
-@given("I want to add the following item to {db_name}:")
+
+@given("I want to delete entry #{id} from {db_name}")
+def step_impl(context, id, db_name):
+    context.dto = db_name_to_dto_type(context.db_name)()
+    setattr(context.dto, "_id", id)
+
+
+@given("I want to add the following entry to {db_name}:")
 def step_impl(context, db_name):
     """
-    Create the requisitte dto from the feature table
+    Create the requisite dto from the feature table
     """
-    dto_type = db_name_to_dto(db_name)
+    dto_type = db_name_to_dto_type(db_name)
         
     row = context.table[0]
-    print(type(row))
+
     row_dict = row_to_dict(row)
 
     context.row = row_dict
     context.dto = dict_to_dto(row_dict, dto_type)
 
+@given("I want to find out how many {item} we have")
+def step_impl(context, item):
+    quantity_dto = db_name_to_dto_type("stock_quantity")()
+    quantity_dto._stock_name = item
+    context.dto = quantity_dto
+
+@given("an entry with that name already exists")
+@given("it is used by other entries")
+@given("this does not contain all the necessary data")
+def step_impl(context):
+    """
+    Saves the current database state before the when step modifies it
+    """
+    dto = db_name_to_dto_type(context.db_name)()
+    try:
+        context.initial_db_state = context.db.fetch_data(dto)
+    except:
+        assert False
+
+@given("{item} does not exist in {db_name}")
+def step_impl(context, item, db_name):
+    """
+    Saves the current database state before the when step modifies it
+    """
+    dto = db_name_to_dto_type(context.db_name)()
+    try:
+        context.initial_db_state = context.db.fetch_data(dto)
+    except:
+        assert False
 
 @when("I run {db_method}")
 def step_impl(context, db_method):
@@ -77,26 +142,96 @@ def step_impl(context, db_method):
     Runs the appropriate database method with the data provided
     """
     method = getattr(context.db, db_method)
-    if not db_method == "fetch_data":
-        context.result = method(context.dto)
-    else:
-        context.fetch_result = (method(context.dto))
+    try:
+        if not db_method == "fetch_data":
+            context.result = method(context.dto)
+        else:
+            context.fetch_result = (method(context.dto))
+    except:
+        assert False
 
+@when("I check what needs restocking")
+def step_impl(context):
+    try:
+        context.result = context.db.check_restock()
+    except:
+        assert False
 
-@then('the following item can be found in {db_name}:')
+@then('the following entry can be found in {db_name}:')
 def step_impl(context, db_name):
     expected_result = row_to_dict(context.table[0])
     db = context.db
 
-    dto_type = db_name_to_dto(db_name)
+    dto_type = db_name_to_dto_type(db_name)
 
     dto = dict_to_dto(expected_result, dto_type)
-    actual_result = db.fetch_data(dto)[0]
-    del actual_result["id"]
+    db_list = db.fetch_data(dto)
+    assert len(db_list) > 0
+    actual_result = db_list[0]
+
+    if not "id" in expected_result:
+        del actual_result["id"]
+    if db_name == "activity_log":
+        del actual_result["date_occured"]
+
     assert expected_result == actual_result
+
+@then("{db_name} no longer contains entry #{value}")
+def step_impl(context, db_name, value):
+    dto = db_name_to_dto_type(db_name)()
+    dto._id = value
+
+    result = context.db.fetch_data(dto)
+
+    assert len(result) == 0
+
+@then("{db_name} no longer contains an entry with {field} {value}")
+def step_impl(context, db_name, field, value):
+    dto = db_name_to_dto_type(db_name)()
+    setattr(dto, f"_{field}", value)
+
+    result = context.db.fetch_data(dto)
+
+    assert len(result) == 0
 
 @then('the following error will be returned to the gui:')
 def step_impl(context, db_name):
     expected_result = row_to_dict(context.table[0])
 
     assert expected_result == context.result
+
+@then("{db_name} is not altered")
+def step_impl(context, db_name):
+    dto = db_name_to_dto_type(db_name)()
+    current_db_state = context.db.fetch_data(dto)
+    assert context.initial_db_state == current_db_state
+
+@then("the following data is returned:")
+def step_impl(context):
+    table_list = table_to_dict_list(context.table)
+    assert table_list == context.fetch_result
+
+@then("the following error message is returned:")
+def step_impl(context):
+    row = row_to_dict(context.table[0])
+    assert row["title"] == context.result.title
+    assert row["message"] == context.result.message
+
+@then("I see that {item_name} needs restocking")
+@then("I see that {item_name} need restocking")
+def step_impl(context, item_name):
+    if item_name == "everything":
+        dto = db_name_to_dto_type("stock_quantity")()
+        all_stock_types = context.db.fetch_data(dto)
+        assert all_stock_types == context.result
+    else:
+        assert item_name in context.result[0].values()
+
+@then("{db_name} is empty")
+def step_impl(context, db_name):
+    dto = db_name_to_dto_type(db_name)()
+    try:
+        result = context.db.fetch_data(dto)
+        assert len(result) == 0
+    except:
+        assert False

@@ -1296,18 +1296,6 @@ class InventoryPopup(Popup):
         if not valid.is_valid_num(current_quantity):
             self._validity_log.error(f"Quantity entered is invalid")
 
-        # Check that the name of the stock type is in the database
-        name_exists = self._controller._database.fetch_data(ds.StockData(name=name))
-
-        if len(name_exists) == 0:
-            self._validity_log.error("Stock name not found in database")
-
-        # check that the name of the location is in the database
-        location_exists = self._controller._database.fetch_data(ds.LocationData(name=location))
-
-        if len(location_exists) == 0:
-            self._validity_log.error("Location not found in database")
-
 
 class LocationPopup(Popup):
     """
