@@ -18,6 +18,19 @@ class Database:
     _delete_log_string = 'Removed'
     _update_log_string = 'Updated'
 
+    _fetch_inventory_query = """
+            SELECT
+                current_inventory.id AS id,
+                current_inventory.current_quantity AS current_quantity,
+                location_data.name AS location_name,
+                stock_data.name AS stock_name
+            FROM
+                current_inventory
+            INNER JOIN location_data ON current_inventory.location_id = location_data.id
+            INNER JOIN stock_data ON current_inventory.stock_id = stock_data.id
+            WHERE 1=1
+        """
+
     def __init__(self, test_data = False):
         if test_data:
             data_dir = Path("./features/test_data")
@@ -189,7 +202,7 @@ class Database:
             # the instance of stock_name with the highest id. This works
             # because sqlite autoincrements the id each time.
             id_str_list = conn.execute("SELECT id FROM current_inventory WHERE stock_id = (SELECT id FROM stock_data WHERE name = ?) ORDER BY id DESC", (stock_name,))
-            log_data = ds.LogData(id_str=id_str_list.fetchall()[0],stock_name=stock_name, location_name=location_name, activity_type=self._add_log_string,update_details=None, quantity_change=initial_quantity)
+            log_data = ds.LogData(instance_id=id_str_list.fetchall()[0][0],stock_name=stock_name, location_name=location_name, activity_type=self._add_log_string,update_details=None, quantity_change=initial_quantity)
             self.add_log_data(log_data, conn)
 
         return True
@@ -201,7 +214,7 @@ class Database:
         """
         # Gets the relevant keywords
         fields_to_insert = "instance_id, stock_id, stock_name, location_id, location_name, activity_type"
-        instance_id_param = data._id
+        instance_id_param = data._instance_id
         # If there is no id, retrieve it
         if not data._stock_id:
             stock_id_param = data._stock_name
@@ -209,8 +222,13 @@ class Database:
         else:
             stock_id_param = data._stock_id
             stock_id_query = "?"
-        
-        stock_name_param = data._stock_name
+
+        if not data._stock_name:
+            stock_name_param = data._stock_id
+            stock_name_query = "(SELECT name FROM stock_data WHERE id = ?)"
+        else:
+            stock_name_param = data._stock_name
+            stock_name_query = "?"
         
         if not data._location_id:
             location_id_param = data._location_name
@@ -219,15 +237,15 @@ class Database:
             location_id_param = data._location_id
             location_id_query = "?"
 
-        location_name_param = data._location_name
+        if not data._location_name:
+            location_name_param = data._location_id
+            location_name_query = "(SELECT name FROM location_data WHERE id = ?)"
+        else:
+            location_name_param = data._location_name
+            location_name_query = "?"
 
-        values_to_insert = f"""
-            {stock_id_query},
-            ?,
-            {location_id_query},
-            ?,
-            ?
-            """
+        values_to_insert = f"?,{stock_id_query},{stock_name_query},{location_id_query},{location_name_query},?"
+
         params = [instance_id_param, stock_id_param, stock_name_param, location_id_param, location_name_param, data._activity_type]
 
         if data._update_details:
@@ -240,13 +258,7 @@ class Database:
             values_to_insert += ", ?"
             params.append(data._quantity_change)
 
-        query = f"""
-            INSERT INTO
-                activity_logs
-                ({fields_to_insert})
-            VALUES
-                ({values_to_insert})
-        """
+        query = f"INSERT INTO activity_logs ({fields_to_insert}) VALUES ({values_to_insert})"
 
         conn.execute(query, tuple(params))
             
@@ -286,6 +298,10 @@ class Database:
         if data._id:
             query += " AND id = ?"
             params.append(data._id)
+        
+        if data._name:
+            query += " AND name = ?"
+            params.append(data._name)
 
         with self.get_database_connection() as conn:
             cur = conn.execute(query, tuple(params))
@@ -319,18 +335,7 @@ class Database:
         """
         Dynamically constructs a query to find the necessary data on current inventory contents
         """
-        query = """
-            SELECT
-                current_inventory.id AS id,
-                current_inventory.current_quantity AS current_quantity,
-                location_data.name AS location_name,
-                stock_data.name AS stock_name
-            FROM
-                current_inventory
-            INNER JOIN location_data ON current_inventory.location_id = location_data.id
-            INNER JOIN stock_data ON current_inventory.stock_id = stock_data.id
-            WHERE 1=1
-        """
+        query = self._fetch_inventory_query
         params = []
 
         if data._id is not None:
@@ -467,22 +472,17 @@ class Database:
             return self.missing_data_popup()
         
         query = """
-            UPDATE stock_data
-            SET id = ?
+            UPDATE location_data
+            SET name = ?
+            WHERE id = ?
         """
-        params = [data._id]
+        params = [data._name, data._id]
         # Check to see if a name already exists. If it does, do not allow this operation
-        if data._name:
-            already_exists = self.fetch_data(ds.LocationData(name=data._name))
-            # Allow the name to be "changed" to the current name
-            if len(already_exists) > 0 and already_exists[0]["name"] != data._name:
-                return MsgBoxGenerator(title="Name already exists", message="Another location already has that name.")
-            query += ", name = ?"
-            params.append(data._name)
-
-        query += " WHERE id = ?"
-        params.append(data._id)
-
+        already_exists = self.fetch_data(ds.LocationData(name=data._name))
+        # Allow the name to be "changed" to the current name
+        if len(already_exists) > 0 and already_exists[0]["name"] != data._name:
+            return MsgBoxGenerator(title="Name already exists", message="Another location already has that name.")
+        
         with self.get_database_connection() as conn:
             cur = conn.execute(query, tuple(params))
 
@@ -523,11 +523,11 @@ class Database:
             # Work out what was changed and use to construct an update code
             # Also checks to make sure a change has been made
             # This helps to detect if a query was submitted where no values had been changed
-            if data._location._name != original_values["name"] and data._quantity != original_values["current_quantity"]:
+            if data._location._name and data._location._name != original_values["location_name"] and data._quantity and data._quantity != original_values["current_quantity"]:
                 log_data._update_details = "Both"
-            elif data._location._name != original_values["name"]:
+            elif data._location._name and data._location._name != original_values["location_name"]:
                 log_data._update_details = "Location"
-            elif data._quantity != original_values["current_quantity"]:
+            elif data._quantity and data._quantity != original_values["current_quantity"]:
                 log_data._update_details = "Quantity"
             else:
                 return MsgBoxGenerator(title="No value change", message="Please update either location or quantity")
@@ -596,7 +596,7 @@ class Database:
 
             cur = conn.execute("DELETE FROM current_inventory WHERE id = ?", (data._id,))
 
-            log_data = ds.LogData(stock_id=ov["stock_id"], location_id=ov["location_id"], activity_type='Removed')
+            log_data = ds.LogData(instance_id=ov["id"],stock_name=ov["stock_name"], location_name=ov["location_name"], activity_type=self._delete_log_string, quantity_change=ov["current_quantity"])
 
             self.add_log_data(log_data, conn)
         
@@ -609,8 +609,11 @@ class Database:
         """
         Fetches the original data from the database
         """
-        cur = conn.execute("SELECT * FROM current_inventory WHERE id=", (data._id,))
-        return {key: value for key, value in cur.fetchone().enumerate()}
+        query = self._fetch_inventory_query
+        query += " AND current_inventory.id=?"
+        cur = conn.execute(query, (data._id,))
+        result = cur.fetchone()
+        return dict(result)
 
     def missing_data_popup(self):
         """

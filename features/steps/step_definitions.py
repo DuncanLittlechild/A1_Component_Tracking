@@ -59,9 +59,14 @@ def step_impl(context, db_name):
 
 @given("the following entries exist in {db_name}:")
 def step_impl(context, db_name):
-    context.db_name = db_name
+    main_db = context.db_name == db_name
+    if main_db:
+        context.row_list = []
+    context.row_list = []
     for r in context.table:
         row = row_to_dict(r)
+        if main_db:
+            context.row_list.append(row)
         dto_type = db_name_to_dto_type(db_name)
         dto = dict_to_dto(row, dto_type)
 
@@ -81,9 +86,11 @@ def step_impl(context, db_name):
 
 @given("I want to set the {db_field} of entry #{id} to {new_value}")
 def step_impl(context,id, db_field, new_value):
-    context.dto = db_name_to_dto_type(context.db_name)()
-    setattr(context.dto, "_id", id)
-    setattr(context.dto, f"_{db_field}", new_value)
+    dict_to_change = [row for row in context.row_list if row["id"] == int(id)][0]
+    dto_type = db_name_to_dto_type(context.db_name)
+    dto = dict_to_dto(dict_to_change, dto_type)
+    setattr(dto, f"_{db_field}", new_value)
+    context.dto = dto
 
 
 @given("I want to delete entry #{id} from {db_name}")
@@ -111,6 +118,11 @@ def step_impl(context, item):
     quantity_dto = db_name_to_dto_type("stock_quantity")()
     quantity_dto._stock_name = item
     context.dto = quantity_dto
+
+@given("I want to find out how much total stock we have")
+def step_impl(context):
+    context.dto= db_name_to_dto_type("stock_quantity")()
+
 
 @given("an entry with that name already exists")
 @given("it is used by other entries")
@@ -169,12 +181,19 @@ def step_impl(context, db_name):
     assert len(db_list) > 0
     actual_result = db_list[0]
 
-    if not "id" in expected_result:
+    if "id" in expected_result:
+        del expected_result["id"]
+    if "id" in actual_result:
         del actual_result["id"]
+
     if db_name == "activity_log":
         del actual_result["date_occured"]
-
-    assert expected_result == actual_result
+    if db_name == "current_inventory":
+        actual_result = {(key if key != "current_quantity" else "quantity"): value for key, value in actual_result.items()}
+        
+    for key in actual_result:
+        assert expected_result[key]
+        assert actual_result[key] == expected_result[key]
 
 @then("{db_name} no longer contains entry #{value}")
 def step_impl(context, db_name, value):

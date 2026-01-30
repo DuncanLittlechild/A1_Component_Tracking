@@ -7,7 +7,7 @@ Feature: location_data
         And a new database object has been initialised
         And the target database is location_data
 
-        Scenario: Add location to location_data database
+        Scenario: S1a - Add location to location_data database
             Given I want to add the following entry to location_data:
                 | name     |
                 | HANGER 1 |
@@ -16,7 +16,7 @@ Feature: location_data
                 | name     |
                 | HANGER 1 |
 
-        Scenario: Location not added if name field is missing
+        Scenario: S1b - Location not added if name field is missing
             Given I want to add the following entry to location_data:
                 | |
                 | |
@@ -27,7 +27,7 @@ Feature: location_data
                 | title               | message                                                |
                 | All fields required | All fields must be filled in to perform this operation |
 
-        Scenario: Location not added if it shares a name with a eisting type
+        Scenario: S3b - Location not added if it shares a name with a eisting type
             Given the following entries exist in location_data:
                 | # | name      |
                 | 1 | WAREHOUSE |
@@ -41,7 +41,7 @@ Feature: location_data
                 | title               | message                                 |
                 | Name already exists | Another location already has that name. |
 
-        Scenario: Edit location in location_data database
+        Scenario: S2c - Edit location in location_data database
             Given the following entries exist in location_data:
                 | # | name      |
                 | 1 | WAREHOUSE |
@@ -51,7 +51,7 @@ Feature: location_data
                 | # | name     |
                 | 1 | WORKSHOP |
 
-        Scenario: Delete location from location_data database
+        Scenario: C1a - Delete location from location_data database
             Given the following entries exist in location_data:
                 | # | name      |
                 | 1 | WAREHOUSE |
@@ -59,7 +59,7 @@ Feature: location_data
             When I run delete_data
             Then location_data no longer contains entry #1
 
-        Scenario: Location not deleted if any instance is of that type
+        Scenario: C1b - Location not deleted if any instance is of that type
             Given the following entries exist in stock_data:
                 | # | name   | restock_quantity |
                 | 1 | CHAIRS | 5                |
@@ -67,8 +67,8 @@ Feature: location_data
                 | # | name     |
                 | 1 | WORKSHOP |
             And the following entries exist in current_inventory:
-                | # | stock_name | location_name | current_quantity |
-                | 1 | CHAIRS     | WORKSHOP      | 20               |
+                | # | stock_name | location_name | quantity |
+                | 1 | CHAIRS     | WORKSHOP      | 20       |
             And I want to delete entry #1 from location_data
             But it is used by other entries
             When I run delete_data

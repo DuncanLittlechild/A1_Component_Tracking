@@ -7,7 +7,7 @@ Feature: stock_data
         And a new database object has been initialised
         And the target database is stock_data
 
-        Scenario: Add stock type to stock_data database
+        Scenario: S1a - Add stock type to stock_data database
             Given I want to add the following entry to stock_data:
                 | name   | restock_quantity |
                 | SCREWS | 20               |
@@ -16,7 +16,7 @@ Feature: stock_data
                 | name   | restock_quantity |
                 | SCREWS | 20               |
         
-        Scenario: Stock type not added if any field is missing
+        Scenario: S1b - Stock type not added if any field is missing
             Given I want to add the following entry to stock_data:
                 | name    |
                 | WIDGETS |
@@ -27,7 +27,7 @@ Feature: stock_data
                 | title               | message                                                |
                 | All fields required | All fields must be filled in to perform this operation |
 
-        Scenario: Stock type not added if it shares a name with an existing type
+        Scenario: S3a - Stock type not added if it shares a name with an existing type
             Given the following entries exist in stock_data:
                 | # | name   | restock_quantity |
                 | 1 | CHAIRS | 5                |
@@ -41,7 +41,7 @@ Feature: stock_data
                 | title               | message                                   |
                 | Name already exists | Another stock type already has that name. |
 
-        Scenario: Edit stock type in stock_data database
+        Scenario: S2a - Edit stock type in stock_data database
             Given the following entries exist in stock_data:
                 | # | name   | restock_quantity |
                 | 1 | CHAIRS | 5                |
@@ -51,7 +51,7 @@ Feature: stock_data
                 | # | name   | restock_quantity |
                 | 1 | CHAIRS | 10               |
 
-        Scenario: Delete stock type from stock_data database
+        Scenario: C2a - Delete stock type from stock_data database
             Given the following entries exist in stock_data:
                 | # | name   | restock_quantity |
                 | 1 | CHAIRS | 5                |
@@ -59,7 +59,7 @@ Feature: stock_data
             When I run delete_data
             Then stock_data no longer contains an entry with id 1
 
-        Scenario: Stock type not deleted if any instance is of that type
+        Scenario: C2b - Stock type not deleted if any instance is of that type
             Given the following entries exist in stock_data:
                 | # | name   | restock_quantity |
                 | 1 | CHAIRS | 5                |
@@ -67,7 +67,7 @@ Feature: stock_data
                 | # | name     |
                 | 1 | WORKSHOP |
             And the following entries exist in current_inventory:
-                | # | stock_name | location_name | current_quantity |
+                | # | stock_name | location_name | quantity |
                 | 1 | CHAIRS     | WORKSHOP      | 20               |
             And I want to delete entry #1 from stock_data
             But it is used by other entries

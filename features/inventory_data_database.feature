@@ -6,6 +6,7 @@ Feature: current_inventory
     Background:
         Given the test database is clear
         And a new database object has been initialised
+        And the target database is current_inventory
         And the following entries exist in stock_data:
             | # | name    | restock_quantity |
             | 1 | SCREWS  | 5                |
@@ -18,19 +19,19 @@ Feature: current_inventory
             | 3 | HANGER    |
 
 
-        Scenario: Add instance to current_inventory
+        Scenario: M1a, M6a - Add instance to current_inventory
             Given I want to add the following entry to current_inventory:
                 | stock_name | location_name | quantity |
                 | SCREWS     | WORKSHOP      | 20       |
             When I run add_data
             Then the following entry can be found in current_inventory:
-                | stock_name | location_name | current_quantity |
+                | stock_name | location_name | quantity |
                 | SCREWS     | WORKSHOP      | 20               |
             And the following entry can be found in activity_log:
                 | # | instance_id | stock_id | stock_name | location_id | location_name | activity_type | update_details | quantity_change |
-                | 1 | 1           | 1        | SCREWS     | 2           | WORKSHOP      | Add           | N/A            | 20              |
+                | 1 | 1           | 1        | SCREWS     | 2           | WORKSHOP      | Created       | N/A            | 20              |
 
-        Scenario: Instance not added if any field is missing
+        Scenario: M1b, M6b - Instance not added if any field is missing
             Given I want to add the following entry to current_inventory:
                 | stock_name | quantity |
                 | SCREWS     | 20       |
@@ -42,7 +43,7 @@ Feature: current_inventory
                 | All fields required | All fields must be filled in to perform this operation |
             And activity_log is empty
 
-        Scenario: Instance not added if its stock_name is not in stock_data
+        Scenario: M8a, M6a - Instance not added if its stock_name is not in stock_data
             Given I want to add the following entry to current_inventory:
                 | stock_name  | location_name | quantity |
                 | GADGETS     | WORKSHOP      | 20       |
@@ -54,7 +55,7 @@ Feature: current_inventory
                 | Parameters not found | Stock type not present in database |
             And activity_log is empty
 
-        Scenario: Instance not added if its location_name is not in location_data
+        Scenario: M9a, M6b - Instance not added if its location_name is not in location_data
             Given I want to add the following entry to current_inventory:
                 | stock_name  | location_name | quantity |
                 | WIDGETS     | GARAGE        | 20       |
@@ -66,7 +67,7 @@ Feature: current_inventory
                 | Parameters not found | Location not present in database |
             And activity_log is empty
 
-        Scenario: Edit instance in current_inventory
+        Scenario: M2a, M6a - Edit instance in current_inventory
             Given the following entries exist in current_inventory:
                 | # | stock_name | location_name | quantity |
                 | 1 | SCREWS     | WORKSHOP      | 20       |
@@ -74,18 +75,18 @@ Feature: current_inventory
             When I run update_data
             Then the following entry can be found in current_inventory:
                 | # | stock_name | location_name | quantity |
-                | 1 | SCREWS     | WORKSHOP      | 5        |
+                | 1 | SCREWS     | WORKSHOP      | 5                |
             And the following entry can be found in activity_log:
                 | # | instance_id | stock_id | stock_name | location_id | location_name | activity_type | update_details | quantity_change |
                 | 1 | 1           | 1        | SCREWS     | 2           | WORKSHOP      | Updated       | Quantity       | 15              |
 
-        Scenario: Delete instance from current_inventory
+        Scenario: M10a, M6a - Delete instance from current_inventory
             Given the following entries exist in current_inventory:
                 | # | stock_name | location_name | quantity |
                 | 1 | SCREWS     | WORKSHOP      | 20       |
-            And I want to delete entry #1
+            And I want to delete entry #1 from current_inventory
             When I run delete_data
             Then current_inventory no longer contains entry #1
             And the following entry can be found in activity_log:
                 | # | instance_id | stock_id | stock_name | location_id | location_name | activity_type | update_details | quantity_change |
-                | 1 | 1           | 1        | SCREWS     | 2           | WORKSHOP      | Removed       | N/A            | 0                |
+                | 1 | 1           | 1        | SCREWS     | 2           | WORKSHOP      | Removed       | N/A            | 20              |
