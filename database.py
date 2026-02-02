@@ -350,8 +350,6 @@ class Database:
             query += " AND stock_data.name = ?"
             params.append(data._stock_type._name)
 
-        print(query)
-
         with self.get_database_connection() as conn:
             cur = conn.execute(query, tuple(params))
             return [dict(row) for row in cur.fetchall()]
@@ -424,8 +422,12 @@ class Database:
             params.append(data._quantity_change)
 
         with self.get_database_connection() as conn:
-            cur = conn.execute(query, tuple(params))
-            return [dict(row) for row in cur.fetchall()]
+            if len(params) == 0:
+                cur = conn.execute(query)
+            else:
+                cur = conn.execute(query, tuple(params))
+            vals = cur.fetchall()
+            return [dict(row) for row in vals]
      
     #########################
     ## Update Data Methods ##

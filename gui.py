@@ -316,7 +316,7 @@ class InventoryFrame(DataFrame):
             messagebox.showerror(title="Fetch failed", message="Failed to fetch item from database")
 
 
-        inventory_query._location._name = item_data[0]["location"]
+        inventory_query._location._name = item_data[0]["location_name"]
         inventory_query._stock_type._name = item_data[0]["stock_name"]
         inventory_query._quantity = item_data[0]["current_quantity"]
 
@@ -1066,7 +1066,7 @@ class LogFrame(DataFrame):
                 r["location_name"],
                 r["activity_type"],
                 r["update_details"],
-                r["date_occurred"]
+                r["date_occured"]
             ))
         
     def valid_params(self):

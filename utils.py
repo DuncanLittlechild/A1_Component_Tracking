@@ -35,7 +35,7 @@ class MsgBoxGenerator:
 def is_valid_name(name: str)->bool:
     """
     Checks to see if the name is valid
-    Names shouldn't include non-alphanumeric characters except for whitespace
+    Names shouldn't include non-alphanumeric characters including whitespace
     """
     return all(c.isalnum() or c.isspace() for c in name)
 
